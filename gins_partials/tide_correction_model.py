@@ -196,6 +196,7 @@ def generate_pole_tide_models(
                 "love_numbers_alpha_partials",
                 "love_numbers_delta_partials",
             ],
+            # (n_alpha, n_delta, n_degrees, n_periods, n_directions) = (16, 13, 2, 40, 2).
             load_love_numbers_for_gins(),
         )
     )
@@ -360,7 +361,6 @@ def preprocess_and_save_tide_correction_partials(
     derivatives.
     """
 
-    # (n_alpha, n_delta, n_degrees, n_periods, n_directions) = (16, 13, 2, 40, 2).
     dates, m_1, m_2 = get_m1_m2_time_series(
         models_path=models_path, pole_motion_file=pole_motion_file
     )
