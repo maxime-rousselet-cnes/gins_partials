@@ -1,0 +1,11 @@
+alna
+base_models
+black
+isort
+ipykernel
+multiprocessing
+numpy
+pandas
+pylint
+pytest
+scipy
