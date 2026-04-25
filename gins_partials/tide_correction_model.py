@@ -34,6 +34,7 @@ from .utils import (
 
 POLE_MODELS_PATH = DATA_PATH.joinpath("pole")
 DEFAULT_SIGNAL_PARAMETERS = SteadyStateSignalParameters()
+POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME = "pole_tide_correction_models"
 
 
 def pole_motion_correction(
@@ -76,7 +77,9 @@ def pole_motion_correction(
 
             if period < 0:
 
-                love_numbers[i_period] = conjugate(love_numbers[freq_to_index[abs(period)]])
+                love_numbers[i_period] = conjugate(
+                    love_numbers[round(number=freq_to_index[abs(period)], ndigits=10)]
+                )
 
             elif period == 0:
 
@@ -184,7 +187,8 @@ def generate_pole_tide_models(
 ) -> dict[str, dict[str, dict[str, ndarray]]]:
     """
     Loads Already computed Love numbers and builds pole tide correction series and pole tide
-    deformation correction series. Includes elastic and IERS models.
+    deformation correction series. Includes elastic and IERS models. The saved corrections have a
+    similar and constant bias that can be retrieved from the elastic unbiased correction.
     """
 
     love_number_log_frequencies = log(load_base_model(name="periods_tab", path=path), dtype=float)
@@ -296,6 +300,14 @@ def generate_pole_tide_models(
     return pole_tide_correction_models
 
 
+def dates_to_jjul_dates(dates: ndarray) -> ndarray:
+    """
+    "Jour Julien" conversion using reference.
+    """
+
+    return 365.25 * (dates - JJUL_1970_REFERENCE_YEAR) + JJUL_1970_REFERENCE_JJUL
+
+
 def save_pole_tide_corrections(
     dates: ndarray,
     pole_tide_correction_models: dict[str, dict[str, dict[str, ndarray]]],
@@ -307,12 +319,14 @@ def save_pole_tide_corrections(
     Writes all pole tide corrections and their partials in a (.TXT) file.
     """
 
-    model_jjul_dates = 365.25 * (dates - JJUL_1970_REFERENCE_YEAR) + JJUL_1970_REFERENCE_JJUL
+    model_jjul_dates = dates_to_jjul_dates(dates=dates)
     model_mask = (model_jjul_dates >= DATA_DATES_LOWER_BOUND - DATA_DATES_MARGIN) & (
         model_jjul_dates <= DATA_DATES_UPPER_BOUND + DATA_DATES_MARGIN
     )
     chuncks_to_hard_code = [
-        hard_code_fortran90(variable_name="dates", array_to_write=model_jjul_dates[model_mask]),
+        hard_code_fortran90(
+            variable_name="jjul_dates", array_to_write=model_jjul_dates[model_mask]
+        ),
         hard_code_fortran90(variable_name="alpha_values", array_to_write=alpha_delta_tabs[0]),
         hard_code_fortran90(variable_name="delta_values", array_to_write=alpha_delta_tabs[1]),
     ]
@@ -337,13 +351,37 @@ def save_pole_tide_corrections(
                 ]
 
     chuncks_to_hard_code += [f""" integer :: n_dates = {len(model_jjul_dates[model_mask])}\n"""]
+    chuncks_to_hard_code += [f""" integer :: n_alpha = {len(alpha_delta_tabs[0])}\n"""]
+    chuncks_to_hard_code += [f""" integer :: n_delta = {len(alpha_delta_tabs[1])}\n"""]
 
     with open(models_path.joinpath(pole_tide_corrections_file), "w", encoding="utf-8") as f:
 
         f.write("".join(chuncks_to_hard_code))
 
     save_base_model(
-        obj=pole_tide_correction_models, path=models_path, name="pole_tide_correction_models"
+        obj=pole_tide_correction_models,
+        path=models_path,
+        name=POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
+    )
+    save_base_model(
+        obj=model_jjul_dates[model_mask],
+        name="jjul_dates",
+        path=models_path,
+    )
+    save_base_model(
+        obj=model_mask,
+        name="model_mask",
+        path=models_path,
+    )
+    save_base_model(
+        obj=alpha_delta_tabs[0],
+        name="alpha_values",
+        path=models_path,
+    )
+    save_base_model(
+        obj=alpha_delta_tabs[1],
+        name="delta_values",
+        path=models_path,
     )
 
 
@@ -366,13 +404,13 @@ def preprocess_and_save_tide_correction_partials(
     )
     i_signal_start, steady_state_dates, steady_state_m_1 = build_steady_state_regime_signal(
         t=dates,
-        signal=m_1,
+        signal=m_1 - m_1[0],
         plateau_length=steady_state_signal_parameters.plateau_length,
         cubic_spline_length=steady_state_signal_parameters.cubic_spline_length,
     )
     _, _, steady_state_m_2 = build_steady_state_regime_signal(
         t=dates,
-        signal=m_2,
+        signal=m_2 - m_2[0],
         plateau_length=steady_state_signal_parameters.plateau_length,
         cubic_spline_length=steady_state_signal_parameters.cubic_spline_length,
     )
