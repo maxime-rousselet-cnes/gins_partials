@@ -145,6 +145,43 @@ def plot_pole_motion(
     save_figure(figure=figure, figure_title="pole_motion")
 
 
+def interpolate_by_axis(
+    alpha_delta_values: tuple[ndarray, ndarray],
+    jjul_dates: ndarray,
+    alpha: float,
+    delta: float,
+    pole_tide_correction_model: ndarray,
+) -> ndarray:
+    """
+    Interpolates axis by axis for plot purposes.
+    """
+
+    alpha_values, delta_values = alpha_delta_values
+    pole_tide_correction_array = zeros(shape=(len(delta_values), len(jjul_dates)))
+
+    for i_delta, _ in enumerate(delta_values):
+
+        for i_date, _ in enumerate(jjul_dates):
+
+            pole_tide_correction_array[i_delta, i_date] = lagrange_order4(
+                x=alpha_values,
+                y=pole_tide_correction_model[:, i_delta, i_date],
+                new_x=[alpha],
+            )[0]
+
+    pole_tide_correction_tab = zeros(shape=len(jjul_dates))
+
+    for i_date, _ in enumerate(jjul_dates):
+
+        pole_tide_correction_tab[i_date] = lagrange_order4(
+            x=delta_values,
+            y=pole_tide_correction_array[:, i_date],
+            new_x=[delta],
+        )[0]
+
+    return pole_tide_correction_tab
+
+
 def plot_pole_tide_models(
     path: Path = Path("."),
     file: str = "gins_listing",
@@ -160,13 +197,16 @@ def plot_pole_tide_models(
 
         model_values_to_plot = DEFAULT_MODEL_VALUES_TO_PLOT
 
-    gins_dates, gins_c, gins_s = get_gins_pole_tide(path=path, file=file)
-    mask = (GINS_ARC_MONITORING_END_JJUL + GINS_ARC_MONITORING_JJUL_MARGIN >= gins_dates) * (
-        gins_dates >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN
-    )
-    gins_dates = gins_dates[mask][::GINS_ARC_MONITORING_SHORTCUT_PLOTTER]
-    gins_c = gins_c[mask][::GINS_ARC_MONITORING_SHORTCUT_PLOTTER]
-    gins_s = gins_s[mask][::GINS_ARC_MONITORING_SHORTCUT_PLOTTER]
+    gins_model: dict[str, ndarray] = {}
+    gins_model["dates"], gins_model["C"], gins_model["S"] = get_gins_pole_tide(path=path, file=file)
+    mask = (
+        GINS_ARC_MONITORING_END_JJUL + GINS_ARC_MONITORING_JJUL_MARGIN >= gins_model["dates"]
+    ) * (gins_model["dates"] >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN)
+
+    for component in ["C", "S", "dates"]:
+
+        gins_model[component] = gins_model[component][mask][::GINS_ARC_MONITORING_SHORTCUT_PLOTTER]
+
     pole_tide_correction_models = load_base_model(name=pole_motion_file, path=models_path)
     jjul_dates = array(object=load_base_model(name="jjul_dates", path=models_path), dtype=float)
     alpha_values = array(object=load_base_model(name="alpha_values", path=models_path), dtype=float)
@@ -178,52 +218,40 @@ def plot_pole_tide_models(
     jjul_dates = jjul_dates[mask]
     axes: list[Axes]
     figure, axes = subplots(2, 1, figsize=(8, 8))
-    axes[0].plot(gins_dates, gins_c, label="GINS")
-    axes[1].plot(gins_dates, gins_s)
+    axes[0].plot(gins_model["dates"], gins_model["C"], label="GINS")
+    axes[1].plot(gins_model["dates"], gins_model["S"])
 
-    for component, gins_component, ax in zip("CS", [gins_c, gins_s], axes):
+    for component, ax in zip("CS", axes):
 
-        sub_diurnal_correction = gins_component - lagrange_order4(
+        sub_diurnal_correction = gins_model[component] - lagrange_order4(
             x=jjul_dates,
             y=array(
                 object=pole_tide_correction_models[component]["potential"]["elastic_love_numbers"],
                 dtype=float,
             )[model_mask][mask],
-            new_x=gins_dates,
+            new_x=gins_model["dates"],
         )
 
         for alpha, delta in model_values_to_plot:
 
-            pole_tide_correction_array = zeros(shape=(len(delta_values), len(jjul_dates)))
-
-            for i_delta, _ in enumerate(delta_values):
-
-                for i_date, _ in enumerate(jjul_dates):
-
-                    pole_tide_correction_array[i_delta, i_date] = lagrange_order4(
-                        x=alpha_values,
-                        y=array(
+            ax.plot(
+                gins_model["dates"],
+                lagrange_order4(
+                    x=jjul_dates,
+                    y=interpolate_by_axis(
+                        alpha_delta_values=(alpha_values, delta_values),
+                        jjul_dates=jjul_dates,
+                        alpha=alpha,
+                        delta=delta,
+                        pole_tide_correction_model=array(
                             object=pole_tide_correction_models[component]["potential"][
                                 "love_numbers"
                             ],
                             dtype=float,
-                        )[:, i_delta, model_mask][:, mask][:, i_date],
-                        new_x=[alpha],
-                    )[0]
-
-            pole_tide_correction_tab = zeros(shape=len(jjul_dates))
-
-            for i_date, _ in enumerate(jjul_dates):
-
-                pole_tide_correction_tab[i_date] = lagrange_order4(
-                    x=delta_values,
-                    y=pole_tide_correction_array[:, i_date],
-                    new_x=[delta],
-                )[0]
-
-            ax.plot(
-                gins_dates,
-                lagrange_order4(x=jjul_dates, y=pole_tide_correction_tab, new_x=gins_dates)
+                        )[:, :, model_mask][:, :, mask],
+                    ),
+                    new_x=gins_model["dates"],
+                )
                 + sub_diurnal_correction,
                 label=rf"$\alpha={alpha}$  $\Delta={delta}$",
             )

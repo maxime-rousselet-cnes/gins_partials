@@ -32,6 +32,9 @@ from .utils import (
     get_m1_m2_time_series,
 )
 
+DEFAULT_POLE_TIDE_CORRECTION_FILE = DATA_PATH.absolute().parent.parent.parent.parent.joinpath(
+    "gin/sub/obelix/src/f_marpolsol.f90"
+)
 POLE_MODELS_PATH = DATA_PATH.joinpath("pole")
 DEFAULT_SIGNAL_PARAMETERS = SteadyStateSignalParameters()
 POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME = "pole_tide_correction_models"
@@ -109,42 +112,74 @@ def fmt(x):
 def hard_code_fortran90(
     variable_name: str,
     array_to_write: ndarray,
-    max_line_length: int = 6860,
-) -> str:
+    max_line_length: int = 6800,
+    max_statement_length: int = 20000,  # NEW
+) -> tuple[str, str]:
     """
     Writes in a "fortran 90" ready format.
     """
 
     flat = array_to_write.flatten(order="F")
     values = [fmt(x) for x in flat]
-    lines, current = [], ""
+    statements = []
+    current_stmt = []
+    current_len = 0
 
     for v in values:
 
         token = v + ", "
 
-        if len(current) + len(token) > max_line_length:
+        if current_len + len(token) > max_statement_length:
 
-            lines.append(current.rstrip())
-            current = token
+            statements.append(current_stmt)
+            current_stmt = [token]
+            current_len = len(token)
 
         else:
 
-            current += token
+            current_stmt.append(token)
+            current_len += len(token)
 
-    if current:
+    if current_stmt:
 
-        lines.append(current.rstrip())
+        statements.append(current_stmt)
 
-    values_str = "&\n ".join(lines)
-    shape_str = ",".join(str(s) for s in array_to_write.shape)
+    result = ""
+    idx_start = 1
 
-    return f""" real(kind=DP), dimension({shape_str}) :: {variable_name}
+    for stmt in statements:
 
-     {variable_name} = reshape( (/ &
-     {values_str} /), (/ {shape_str} /) )
-    
-    """
+        lines, current = [], ""
+
+        for token in stmt:
+
+            if len(current) + len(token) > max_line_length:
+
+                lines.append(current.rstrip())
+                current: str = token
+
+            else:
+
+                current += token
+
+        if current:
+
+            lines.append(current.rstrip())
+
+        values_str = "&\n  ".join(lines)
+        n_vals = len(stmt)
+        idx_end = idx_start + n_vals - 1
+        result += f"""  {variable_name}({idx_start}:{idx_end}) = (/ &
+  {values_str[:-1]} /)
+"""
+        idx_start = idx_end + 1
+
+    shape_iterable_string = ",".join(str(s) for s in array_to_write.shape)
+
+    return (
+        f"  real(kind=DP), dimension({shape_iterable_string}) :: {variable_name}\n",
+        result,
+    )
 
 
 def compute_delta_model(
@@ -308,11 +343,42 @@ def dates_to_jjul_dates(dates: ndarray) -> ndarray:
     return 365.25 * (dates - JJUL_1970_REFERENCE_YEAR) + JJUL_1970_REFERENCE_JJUL
 
 
+def insert_between_markers(file_path: str, start_marker: str, end_marker: str, multiline_text: str):
+    """
+    Inserts multiline_text between the first occurrence of start_marker
+    and end_marker in the file.
+    The markers themselves are preserved.
+    """
+
+    path = Path(file_path)
+    content = path.read_text(encoding="utf-8")
+    start_index = content.find(start_marker)
+    end_index = content.find(end_marker)
+
+    if start_index == -1:
+
+        raise ValueError(f"Start marker not found: {start_marker}")
+
+    if end_index == -1:
+
+        raise ValueError(f"End marker not found: {end_marker}")
+
+    if start_index > end_index:
+
+        raise ValueError("Start marker appears after end marker")
+
+    insert_start = start_index + len(start_marker)
+    updated_content = (
+        content[:insert_start] + "\n" + multiline_text.strip("\n") + "\n" + content[end_index:]
+    )
+    path.write_text(updated_content, encoding="utf-8")
+
+
 def save_pole_tide_corrections(
     dates: ndarray,
     pole_tide_correction_models: dict[str, dict[str, dict[str, ndarray]]],
     models_path: Path = POLE_MODELS_PATH,
-    pole_tide_corrections_file: str = "pole_tide_corrections.txt",
+    pole_tide_corrections_file: Path = DEFAULT_POLE_TIDE_CORRECTION_FILE,
     alpha_delta_tabs: tuple[ndarray, ndarray] = (ALPHA_TAB, DELTA_TAB),
 ) -> None:
     """
@@ -323,13 +389,23 @@ def save_pole_tide_corrections(
     model_mask = (model_jjul_dates >= DATA_DATES_LOWER_BOUND - DATA_DATES_MARGIN) & (
         model_jjul_dates <= DATA_DATES_UPPER_BOUND + DATA_DATES_MARGIN
     )
-    chuncks_to_hard_code = [
-        hard_code_fortran90(
-            variable_name="jjul_dates", array_to_write=model_jjul_dates[model_mask]
-        ),
-        hard_code_fortran90(variable_name="alpha_values", array_to_write=alpha_delta_tabs[0]),
-        hard_code_fortran90(variable_name="delta_values", array_to_write=alpha_delta_tabs[1]),
+    definitions_to_hard_code = [
+        f"""  integer :: n_dates = {len(model_jjul_dates[model_mask])}\n""",
+        f"""  integer :: n_alpha = {len(alpha_delta_tabs[0])}\n""",
+        f"""  integer :: n_delta = {len(alpha_delta_tabs[1])}\n""",
     ]
+    chuncks_to_hard_code = []
+    a, b = hard_code_fortran90(
+        variable_name="jjul_dates", array_to_write=model_jjul_dates[model_mask]
+    )
+    definitions_to_hard_code += [a]
+    chuncks_to_hard_code += [b]
+    a, b = hard_code_fortran90(variable_name="alpha_values", array_to_write=alpha_delta_tabs[0])
+    definitions_to_hard_code += [a]
+    chuncks_to_hard_code += [b]
+    a, b = hard_code_fortran90(variable_name="delta_values", array_to_write=alpha_delta_tabs[1])
+    definitions_to_hard_code += [a]
+    chuncks_to_hard_code += [b]
 
     for (
         component,
@@ -343,20 +419,19 @@ def save_pole_tide_corrections(
 
             for model_name, model in pole_tide_correction_models_per_model.items():
 
-                chuncks_to_hard_code += [
-                    hard_code_fortran90(
-                        variable_name="_".join((component, correction_type, model_name)),
-                        array_to_write=model[..., model_mask],
-                    )
-                ]
+                a, b = hard_code_fortran90(
+                    variable_name="_".join((component, correction_type, model_name)),
+                    array_to_write=array(object=model, dtype=float)[..., model_mask],
+                )
+                definitions_to_hard_code += [a]
+                chuncks_to_hard_code += [b]
 
-    chuncks_to_hard_code += [f""" integer :: n_dates = {len(model_jjul_dates[model_mask])}\n"""]
-    chuncks_to_hard_code += [f""" integer :: n_alpha = {len(alpha_delta_tabs[0])}\n"""]
-    chuncks_to_hard_code += [f""" integer :: n_delta = {len(alpha_delta_tabs[1])}\n"""]
-
-    with open(models_path.joinpath(pole_tide_corrections_file), "w", encoding="utf-8") as f:
-
-        f.write("".join(chuncks_to_hard_code))
+    insert_between_markers(
+        file_path=pole_tide_corrections_file,
+        start_marker="  !Variables locales",
+        end_marker="  integer :: std_crt",
+        multiline_text="".join(definitions_to_hard_code + chuncks_to_hard_code),
+    )
 
     save_base_model(
         obj=pole_tide_correction_models,
@@ -364,7 +439,7 @@ def save_pole_tide_corrections(
         name=POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
     )
     save_base_model(
-        obj=model_jjul_dates[model_mask],
+        obj=model_jjul_dates,
         name="jjul_dates",
         path=models_path,
     )
@@ -389,7 +464,7 @@ def preprocess_and_save_tide_correction_partials(
     steady_state_signal_parameters: SteadyStateSignalParameters = DEFAULT_SIGNAL_PARAMETERS,
     models_path: Path = POLE_MODELS_PATH,
     pole_motion_file: str = "C01_pole_motion_time_series.txt",
-    pole_tide_corrections_file: str = "pole_tide_corrections.txt",
+    pole_tide_corrections_file: Path = DEFAULT_POLE_TIDE_CORRECTION_FILE,
 ) -> None:
     """
     Gets already computed Love numbers for a range of admissible physical quantities.
@@ -430,3 +505,27 @@ def preprocess_and_save_tide_correction_partials(
     )
 
     # TODO: Interpolate on 1yr, CW, 9.3yr and 18.6yr for solid Earth tide. (Call 3 times too).
+
+
+def regenerate_fortran_code(
+    models_path: Path = POLE_MODELS_PATH,
+    pole_motion_file: str = "pole_tide_correction_models",
+    pole_tide_corrections_file: Path = DEFAULT_POLE_TIDE_CORRECTION_FILE,
+) -> None:
+    """
+    Regenerates the fortran90-ready code from the (.JSON) informations.
+    """
+
+    dates, _, _ = get_m1_m2_time_series(
+        models_path=models_path, pole_motion_file="C01_pole_motion_time_series.txt"
+    )
+    pole_tide_correction_models = load_base_model(name=pole_motion_file, path=models_path)
+    alpha_values = array(object=load_base_model(name="alpha_values", path=models_path), dtype=float)
+    delta_values = array(object=load_base_model(name="delta_values", path=models_path), dtype=float)
+    save_pole_tide_corrections(
+        dates=dates,
+        pole_tide_correction_models=pole_tide_correction_models,
+        models_path=models_path,
+        pole_tide_corrections_file=pole_tide_corrections_file,
+        alpha_delta_tabs=(alpha_values, delta_values),
+    )
