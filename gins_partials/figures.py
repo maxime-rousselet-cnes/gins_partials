@@ -3,14 +3,15 @@ Figures for validation purposes.
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 from alna import save_figure
 from base_models import lagrange_order4, load_base_model
 from matplotlib.axes import Axes
-from matplotlib.pyplot import subplots
+from matplotlib.pyplot import show, subplots, tight_layout
 from numpy import array, ndarray, zeros
 
+from .listing_getters import read_for_partials
 from .tide_correction_model import (
     POLE_MODELS_PATH,
     POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
@@ -261,3 +262,80 @@ def plot_pole_tide_models(
     axes[1].set_xlabel(xlabel=r"$J_{julian}$")
     axes[0].legend()
     save_figure(figure=figure, figure_title="pole_tide_models")
+
+
+def compare_acceleration_partials_to_finite_differences(
+    dalpha: float = 0.005, ddelta: float = 0.05
+) -> None:
+
+    epochs, _, alpha_formal, delta_formal = read_for_partials(filename="starlette_partials_test")
+    _, acc_alpha_plus, _, _ = read_for_partials(
+        filename="starlette_partials_test_alpha_plus_" + str(dalpha)
+    )
+    _, acc_alpha_minus, _, _ = read_for_partials(
+        filename="starlette_partials_test_alpha_minus_" + str(dalpha)
+    )
+    _, acc_delta_plus, _, _ = read_for_partials(
+        filename="starlette_partials_test_delta_plus_" + str(ddelta)
+    )
+    _, acc_delta_minus, _, _ = read_for_partials(
+        filename="starlette_partials_test_delta_minus_" + str(ddelta)
+    )
+    alpha_fd = (acc_alpha_plus - acc_alpha_minus) / (2.0 * dalpha)
+    delta_fd = (acc_delta_plus - acc_delta_minus) / (2.0 * ddelta)
+
+    axes: Iterable[Iterable[Axes]]
+    fig, axes = subplots(3, 2, figsize=(12, 10), sharex=True)
+
+    for (i, ax_line), component in zip(enumerate(axes), ["X", "Y", "Z"]):
+
+        for ax, parameter in zip(ax_line, ["alpha", "delta"]):
+
+            if parameter == "alpha":
+
+                ax.scatter(
+                    epochs,
+                    alpha_formal[:, i],
+                    color="b",
+                    marker="x",
+                    label="formal" if i == 0 else None,
+                )
+                ax.scatter(
+                    epochs,
+                    alpha_fd[:, i],
+                    color="b",
+                    marker="o",
+                    label="finite differences" if i == 0 else None,
+                )
+
+            else:
+
+                ax.scatter(
+                    epochs,
+                    delta_formal[:, i],
+                    color="r",
+                    marker="x",
+                    label="formal" if i == 0 else None,
+                )
+                ax.scatter(
+                    epochs,
+                    delta_fd[:, i],
+                    color="r",
+                    marker="o",
+                    label="finite differences" if i == 0 else None,
+                )
+
+            if i == 0:
+
+                ax.legend(ncol=2)
+                ax.set_title(r"$\frac{\partial a}{\partial " + parameter + r"}$")
+
+        ax.set_ylabel(f"{component}")
+        ax.grid(True, alpha=0.3)
+
+    ax.set_xlabel("JJul")
+
+    fig.suptitle("Finite difference comparision to formal partials")
+
+    tight_layout()
+    show()

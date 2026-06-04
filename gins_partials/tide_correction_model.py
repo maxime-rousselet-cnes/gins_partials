@@ -15,7 +15,7 @@ from base_models import (
     load_base_model,
     save_base_model,
 )
-from numpy import argmax, array, conjugate, log, ndarray, zeros
+from numpy import argmax, array, conjugate, log, ndarray, ndindex, zeros
 from scipy.fft import fft, fftfreq, ifft
 from tqdm import tqdm
 
@@ -113,73 +113,109 @@ def hard_code_fortran90(
     variable_name: str,
     array_to_write: ndarray,
     max_line_length: int = 6800,
-    max_statement_length: int = 20000,  # NEW
+    max_statement_length: int = 20000,
 ) -> tuple[str, str]:
     """
     Writes in a "fortran 90" ready format.
     """
 
-    flat = array_to_write.flatten(order="F")
-    values = [fmt(x) for x in flat]
-    statements = []
-    current_stmt = []
-    current_len = 0
+    def _write_1d_slice(
+        lhs: str,
+        values: list[str],
+    ) -> str:
 
-    for v in values:
+        statements = []
+        current_stmt = []
+        current_len = 0
 
-        token = v + ", "
+        for v in values:
 
-        if current_len + len(token) > max_statement_length:
+            token = v + ", "
 
-            statements.append(current_stmt)
-            current_stmt = [token]
-            current_len = len(token)
+            if current_len + len(token) > max_statement_length:
 
-        else:
-
-            current_stmt.append(token)
-            current_len += len(token)
-
-    if current_stmt:
-
-        statements.append(current_stmt)
-
-    result = ""
-    idx_start = 1
-
-    for stmt in statements:
-
-        lines, current = [], ""
-
-        for token in stmt:
-
-            if len(current) + len(token) > max_line_length:
-
-                lines.append(current.rstrip())
-                current: str = token
+                statements.append(current_stmt)
+                current_stmt = [token]
+                current_len = len(token)
 
             else:
 
-                current += token
+                current_stmt.append(token)
+                current_len += len(token)
 
-        if current:
+        if current_stmt:
 
-            lines.append(current.rstrip())
+            statements.append(current_stmt)
 
-        values_str = "&\n  ".join(lines)
-        n_vals = len(stmt)
-        idx_end = idx_start + n_vals - 1
-        result += f"""  {variable_name}({idx_start}:{idx_end}) = (/ &
+        result = ""
+        idx_start = 1
+
+        for stmt in statements:
+
+            lines = []
+            current = ""
+
+            for token in stmt:
+
+                if len(current) + len(token) > max_line_length:
+
+                    lines.append(current.rstrip())
+                    current = token
+
+                else:
+
+                    current += token
+
+            if current:
+
+                lines.append(current.rstrip())
+
+            values_str = "&\n  ".join(lines)
+
+            n_vals = len(stmt)
+            idx_end = idx_start + n_vals - 1
+
+            result += f"""  {lhs}{idx_start}:{idx_end}) = (/ &
   {values_str[:-1]} /)
 """
-        idx_start = idx_end + 1
+
+            idx_start = idx_end + 1
+
+        return result
 
     shape_iterable_string = ",".join(str(s) for s in array_to_write.shape)
 
-    return (
-        f"  real(kind=DP), dimension({shape_iterable_string}) :: {variable_name}\n",
-        result,
-    )
+    declaration = f"  real(kind=DP), dimension({shape_iterable_string}) " f":: {variable_name}\n"
+
+    result = ""
+
+    if array_to_write.ndim == 1:
+
+        values = [fmt(x) for x in array_to_write]
+
+        result += _write_1d_slice(
+            lhs=f"{variable_name}(",
+            values=values,
+        )
+
+    else:
+
+        for idx in ndindex(array_to_write.shape[:-1]):
+
+            vec = array_to_write[idx]
+
+            values = [fmt(x) for x in vec]
+
+            fixed_indices = ",".join(str(i + 1) for i in idx)
+
+            lhs = f"{variable_name}" f"({fixed_indices},"
+
+            result += _write_1d_slice(
+                lhs=lhs,
+                values=values,
+            )
+
+    return declaration, result
 
 
 def compute_delta_model(
@@ -430,9 +466,15 @@ def save_pole_tide_corrections(
         file_path=pole_tide_corrections_file,
         start_marker="  !Variables locales",
         end_marker="  integer :: std_crt",
-        multiline_text="".join(definitions_to_hard_code + chuncks_to_hard_code),
+        multiline_text="".join(definitions_to_hard_code),
     )
 
+    insert_between_markers(
+        file_path=pole_tide_corrections_file,
+        start_marker="  !>Partie executive",
+        end_marker="!Initialisation des variables",
+        multiline_text="".join(chuncks_to_hard_code),
+    )
     save_base_model(
         obj=pole_tide_correction_models,
         path=models_path,
