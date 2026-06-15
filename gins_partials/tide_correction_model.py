@@ -546,8 +546,6 @@ def preprocess_and_save_tide_correction_partials(
         pole_tide_corrections_file=pole_tide_corrections_file,
     )
 
-    # TODO: Interpolate on 1yr, CW, 9.3yr and 18.6yr for solid Earth tide. (Call 3 times too).
-
 
 def regenerate_fortran_code(
     models_path: Path = POLE_MODELS_PATH,
