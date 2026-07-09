@@ -6,8 +6,8 @@ and pole tide deformation correction. Saves all relevant information as fortran9
 arrays.
 """
 
-from gins_partials import regenerate_fortran_code
+from gins_partials import preprocess_and_save_tide_correction_partials
 
 if __name__ == "__main__":
 
-    regenerate_fortran_code()
+    preprocess_and_save_tide_correction_partials()
