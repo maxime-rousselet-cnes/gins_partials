@@ -430,8 +430,6 @@ def main() -> None:
         coeffs=coeffs,
         options=(args.annual, args.acceleration),
         sigma=args.sigma,
-        start=args.start,
-        end=args.end,
     )
 
 
