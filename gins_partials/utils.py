@@ -2,7 +2,6 @@
 Main interraction functions with data files and python.
 """
 
-from datetime import datetime
 from pathlib import Path
 
 from base_models import DATA_PATH, EARTH_RADIUS

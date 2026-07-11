@@ -4,7 +4,7 @@ Generate gravity-field constraint parameter files.
 Example:
 
     python main_create_constraints_multi_harmonics.py \
-        --output constraints_G_trend_and_acceleration_and_annual.txt \
+        --output constraints_G_trend_and_acceleration_and_annual \
         --start 19910101 \
         --end 19910106 \
         --annual \
@@ -45,8 +45,8 @@ def parse_date(value: str) -> date:
     return datetime.strptime(value, "%Y%m%d").date()
 
 
-START_DATE = parse_date("19910101")
-END_DATE = parse_date("20260101")
+START_DATE = parse_date(value="19910101")
+END_DATE = parse_date(value="20260101")
 
 
 def iter_dates(start: date = START_DATE, end: date = END_DATE):
@@ -108,13 +108,13 @@ def label(text: str) -> str:
     return f"[{text:<24}]"
 
 
-def harmonic_label(kind: str, degree: int, order: int, date: date) -> str:
+def harmonic_label(kind: str, degree: int, order: int, date_time: date) -> str:
     """
     Creates a signaletic element.
     """
 
     family = "GCN" if kind == "C" else "GSN"
-    inside = f"{family:<3}{degree:4d}{order:3d} {date:%Y%m%d}     "
+    inside = f"{family:<3}{degree:4d}{order:3d} {date_time:%Y%m%d}     "
 
     return label(inside)
 
@@ -198,14 +198,14 @@ def model_coefficients(
     return coeffs
 
 
-def fractional_year_from_2000(date: date, days_per_year: float = DAYS_PER_YEAR) -> float:
+def fractional_year_from_2000(date_time: date, days_per_year: float = DAYS_PER_YEAR) -> float:
     """
     Decimal-year convention.
     """
 
-    day_of_year = date.timetuple().tm_yday
+    day_of_year = date_time.timetuple().tm_yday
 
-    return (date.year - 2000) + ((day_of_year - 1) / days_per_year)
+    return (date_time.year - 2000) + ((day_of_year - 1) / days_per_year)
 
 
 def coefficient_summary(coeffs: list[tuple[str, int, int]]) -> str:
@@ -245,18 +245,22 @@ def write_parameter_creation_block(
     Creates the needed parameters to describe the model.
     """
 
-    summary = coefficient_summary(coeffs)
+    summary = coefficient_summary(coeffs=coeffs)
     lines.append(
-        " nb cle     coef                   label                     coef                 label                     valeur           sigma"
+        " nb cle     coef                   label                     coef"
+        + "                 label                     valeur           sigma"
     )
     lines.append(f"##COM## Creation des parametres pour {summary}")
 
     for kind, degree, order in coeffs:
 
-        for name in parameter_names(kind, degree, order, annual, acceleration):
+        for name in parameter_names(
+            kind=kind, degree=degree, order=order, annual=annual, acceleration=acceleration
+        ):
 
             lines.append(
-                f"  0                       {label(name)}                                                = {fortran_sci(0.0)}"
+                f"  0                       {label(name)}"
+                + "                                                = {fortran_sci(0.0)}"
             )
 
 
@@ -264,57 +268,68 @@ def write_constraint_block(
     lines: list[str],
     kind_degree_order: tuple[str, int, int],
     dates: list[date],
-    annual: bool,
-    acceleration: bool,
+    options: tuple[bool, bool],
     sigma: str,
 ) -> None:
     """
     Creates a single contraint line in the constrain file.
     """
 
-    kind, degree, order = kind_degree_order
-    lines.append(f"##COM## {kind}_{degree}{order}")
-    param_names = parameter_names(kind, degree, order, annual, acceleration)
+    lines.append(f"##COM## {kind_degree_order[0]}_{kind_degree_order[1]}{kind_degree_order[2]}")
+    param_names = parameter_names(
+        kind=kind_degree_order[0],
+        degree=kind_degree_order[1],
+        order=kind_degree_order[2],
+        annual=options[0],
+        acceleration=options[1],
+    )
 
-    for date in dates:
+    for date_time in dates:
 
-        t = fractional_year_from_2000(date, DAYS_PER_YEAR)
-        param_coeffs = model_coefficients(t, annual, acceleration, OMEGA)
+        t = fractional_year_from_2000(date_time=date, days_per_year=DAYS_PER_YEAR)
+        param_coeffs = model_coefficients(
+            t=t, annual=options[0], acceleration=options[1], omega=OMEGA
+        )
         linked_count = 1 + len(param_names)
-        first_param_coeff = param_coeffs[0]
         first_param_name = param_names[0]
         lines.append(
-            f"{linked_count:3d} 1 {fortran_sci(1.0)} "
-            f"{harmonic_label(kind, degree, order, date)} "
-            f"{fortran_sci(first_param_coeff)} {label(first_param_name)} "
-            f"= {fortran_sci(0.0)} {sigma}"
+            f"{linked_count:3d} 1 {fortran_sci(value=1.0)} "
+            + harmonic_label(
+                kind=kind_degree_order[0],
+                degree=kind_degree_order[1],
+                order=kind_degree_order[2],
+                date_time=date_time,
+            )
+            + f"{fortran_sci(value=param_coeffs[0])} {label(text=first_param_name)} "
+            f"= {fortran_sci(value=0.0)} {sigma}"
         )
         remaining = list(zip(param_coeffs[1:], param_names[1:]))
 
         for i in range(0, len(remaining), 2):
 
             chunk = remaining[i : i + 2]
-            chunk_text = " ".join(f"{fortran_sci(coeff)} {label(name)}" for coeff, name in chunk)
+            chunk_text = " ".join(
+                f"{fortran_sci(value=coeff)} {label(text=name)}" for coeff, name in chunk
+            )
             lines.append(f"      {chunk_text}")
 
 
 def generate_file(
     output: Path,
     coeffs: list[tuple[str, int, int]],
-    annual: bool,
-    acceleration: bool,
+    options: tuple[bool, bool],
     sigma: str,
-    start: date = START_DATE,
-    end: date = END_DATE,
 ) -> None:
     """
     Generates a Gravity field model contraint file for DYNAMO.
     """
 
-    dates = list(iter_dates(start, end))
-    lines: list[str] = []
-    write_parameter_creation_block(lines, coeffs, annual, acceleration)
-    summary = coefficient_summary(coeffs)
+    dates = list(iter_dates(start=START_DATE, end=END_DATE))
+    lines: list[str] = ["\n"] * 2
+    write_parameter_creation_block(
+        lines=lines, coeffs=coeffs, annual=options[0], acceleration=options[1]
+    )
+    summary = coefficient_summary(coeffs=coeffs)
     lines.append(f"##COM## Contraintes strictes sur {summary}")
 
     for kind_degree_order in coeffs:
@@ -323,8 +338,7 @@ def generate_file(
             lines=lines,
             kind_degree_order=kind_degree_order,
             dates=dates,
-            annual=annual,
-            acceleration=acceleration,
+            options=options,
             sigma=sigma,
         )
 
@@ -389,22 +403,10 @@ def main() -> None:
         help="Output text file path.",
     )
     parser.add_argument(
-        "--start",
-        default="19910101",
-        type=parse_date,
-        help="Start date, YYYYMMDD or YYYY-MM-DD.",
-    )
-    parser.add_argument(
-        "--end",
-        default="19910106",
-        type=parse_date,
-        help="End date, inclusive, YYYYMMDD or YYYY-MM-DD.",
-    )
-    parser.add_argument(
         "--coeff",
         action="append",
         type=parse_coeff,
-        help="Coefficient to generate, e.g. C20, C21, S21. May be repeated. Defaults to C20 C21 S21 C40 C41 S41 C60.",
+        help="Coefficient to generate, e.g. C20, ... Defaults to C20 C21 S21 C40 C41 S41 C60.",
     )
     parser.add_argument(
         "--annual",
@@ -431,8 +433,7 @@ def main() -> None:
     generate_file(
         output=args.output,
         coeffs=coeffs,
-        annual=args.annual,
-        acceleration=args.acceleration,
+        options=(args.annual, args.acceleration),
         sigma=args.sigma,
         start=args.start,
         end=args.end,

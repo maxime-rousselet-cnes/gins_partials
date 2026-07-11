@@ -41,6 +41,8 @@ from .utils import (
     get_m1_m2_time_series,
 )
 
+MAX_STATEMENT_LENGTH = 20000
+MAX_LINE_LENGTH = 6800
 DEFAULT_POLE_TIDE_CORRECTION_FILE = ROOT_PATH.parent.parent.joinpath(
     "gin/sub/obelix/src/f_marpolsol.f90"
 ).resolve()
@@ -176,7 +178,8 @@ def fmt(x: float) -> str:
 
 
 def write_1d_slice(
-    left_hand_side: str, values: list[str], max_statement_length: int, max_line_length: int
+    left_hand_side: str,
+    values: list[str],
 ) -> str:
     """
     Prepares a slice of a 1D tab to hard-code in Fortran90.
@@ -190,7 +193,7 @@ def write_1d_slice(
 
         token = v + ", "
 
-        if current_len + len(token) > max_statement_length:
+        if current_len + len(token) > MAX_STATEMENT_LENGTH:
 
             statements.append(current_stmt)
             current_stmt = [token]
@@ -215,7 +218,7 @@ def write_1d_slice(
 
         for token in stmt:
 
-            if len(current) + len(token) > max_line_length:
+            if len(current) + len(token) > MAX_LINE_LENGTH:
 
                 lines.append(current.rstrip())
                 current = token
@@ -229,8 +232,7 @@ def write_1d_slice(
             lines.append(current.rstrip())
 
         values_str = "&\n  ".join(lines)
-        n_vals = len(stmt)
-        idx_end = idx_start + n_vals - 1
+        idx_end = idx_start + len(stmt) - 1
         result += f"""  {left_hand_side}{idx_start}:{idx_end}) = (/ &
 {values_str[:-1]} /)
 """
@@ -242,8 +244,6 @@ def write_1d_slice(
 def hard_code_fortran90(
     variable_name: str,
     array_to_write: ndarray,
-    max_statement_length: int = 20000,
-    max_line_length: int = 6800,
     float_option: bool = True,
 ) -> tuple[str, str]:
     """
@@ -263,8 +263,6 @@ def hard_code_fortran90(
         result += write_1d_slice(
             left_hand_side=f"{variable_name}(",
             values=[fmt(x) if float_option else str(int(x)) for x in array_to_write],
-            max_statement_length=max_statement_length,
-            max_line_length=max_line_length,
         )
 
     else:
@@ -276,8 +274,6 @@ def hard_code_fortran90(
             result += write_1d_slice(
                 left_hand_side=left_hand_side,
                 values=[fmt(x) if float_option else str(int(x)) for x in array_to_write[idx]],
-                max_statement_length=max_statement_length,
-                max_line_length=max_line_length,
             )
 
     return declaration, result
@@ -575,7 +571,7 @@ def save_solid_tide_corrections(
     solid_tide_frequency_values = tide_angular_frequencies_to_cycle_per_yr()
     definitions_to_hard_code = [
         "  ! Solid tide k20 generated from k2(alpha, log10(delta), log10(tau_m), tide).\n",
-        "  ! Frequency interpolation is done in Python at the IERS Table 6.5b long-period zonal tides.\n",
+        "  ! Frequency interpolation is done at the IERS Table 6.5b long-period zonal tides.\n",
         "  ! Partial arrays are derivatives wrt alpha, log10(delta), and log10(tau_m).\n",
         f"  integer :: n_alpha = {len(alpha_values)}\n",
         f"  integer :: n_delta = {len(log10_delta_values)}\n",
@@ -661,8 +657,6 @@ def preprocess_and_save_tide_correction_partials(
     steady_state_signal_parameters: SteadyStateSignalParameters = DEFAULT_SIGNAL_PARAMETERS,
     models_path: Path = POLE_MODELS_PATH,
     pole_motion_file: str = "C01_pole_motion_time_series.txt",
-    pole_tide_corrections_file: Path = DEFAULT_POLE_TIDE_CORRECTION_FILE,
-    solid_tide_corrections_file: Path = DEFAULT_SOLID_TIDE_CORRECTION_FILE,
 ) -> None:
     """
     Builds and hard-codes pole tide corrections from k2 and its partials.
@@ -697,11 +691,11 @@ def preprocess_and_save_tide_correction_partials(
         parameter_tabs=tabs,
         pole_tide_correction_models=pole_models,
         models_path=TIDE_MODELS_PATH,
-        pole_tide_corrections_file=pole_tide_corrections_file,
+        pole_tide_corrections_file=DEFAULT_POLE_TIDE_CORRECTION_FILE,
     )
     save_solid_tide_corrections(
         parameter_tabs=tabs,
         solid_tide_correction_models=solid_models,
         models_path=TIDE_MODELS_PATH,
-        solid_tide_corrections_file=solid_tide_corrections_file,
+        solid_tide_corrections_file=DEFAULT_SOLID_TIDE_CORRECTION_FILE,
     )
