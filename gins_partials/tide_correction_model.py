@@ -135,11 +135,11 @@ def pole_motion_correction(
         positive = frequencies > 0
         love_numbers[positive] = lagrange_order4(
             x=love_number_log_frequencies,
-            y=love_numbers_model.real,
+            y=love_numbers_model.real[0],
             new_x=log(frequencies[positive]),
         ) + 1j * lagrange_order4(
             x=love_number_log_frequencies,
-            y=love_numbers_model.imag,
+            y=love_numbers_model.imag[0],
             new_x=log(frequencies[positive]),
         )
         freq_to_index = {round(float(f), 10): i for i, f in enumerate(frequencies)}
@@ -154,7 +154,7 @@ def pole_motion_correction(
 
             elif frequency == 0:
 
-                love_numbers[i_period] = love_numbers_model[argmin(love_number_log_frequencies)]
+                love_numbers[i_period] = love_numbers_model[0][argmin(love_number_log_frequencies)]
 
     # Solid Earth pole tide. The result is C21 - i*S21 in the frequency domain.
     phi_se_pt_complex: ndarray = -PHI_CONSTANT * love_numbers * m_complex
@@ -339,7 +339,7 @@ def interpolate_love_number_grid_to_solid_tides(
 
     for idx in ndindex(model_grid.shape[:3]):
 
-        k2_series = model_grid[idx]
+        k2_series = model_grid[idx][0]
         interpolated[idx] = lagrange_order4(
             x=love_number_log_frequencies,
             y=k2_series.real,
@@ -429,18 +429,14 @@ def generate_tide_models(
     )
     grid_indices = list(ndindex(love_numbers.shape[:3]))
     solid_tide_frequencies = tide_angular_frequencies_to_cycle_per_yr()
-    solid_tide_correction_models["elastic"][...] = interpolate_love_number_grid_to_solid_tides(
-        model_grid=asarray(elastic[0])[None, None, None, :]
-        .repeat(love_numbers.shape[0], axis=0)
-        .repeat(love_numbers.shape[1], axis=1)
-        .repeat(love_numbers.shape[2], axis=2),
-        love_number_log_frequencies=love_number_log_frequencies,
-        solid_tide_frequencies=solid_tide_frequencies,
-    )
+    solid_tide_correction_models["elastic"][...] = elastic[0]
     solid_tide_correction_models["IERS"][...] = complex(K_2_IERS)
-    for model_name, model_grid in zip(
-        ["anelastic", "alpha_partials", "log10_delta_partials", "log10_tau_m_partials"],
-        [love_numbers] + list(love_numbers_partials.values()),
+    for model_name, model_grid in tqdm(
+        zip(
+            ["anelastic", "alpha_partials", "log10_delta_partials", "log10_tau_m_partials"],
+            [love_numbers] + list(love_numbers_partials.values()),
+        ),
+        total=4,
     ):
 
         solid_tide_correction_models[model_name][...] = interpolate_love_number_grid_to_solid_tides(
@@ -451,24 +447,18 @@ def generate_tide_models(
 
         with Pool() as pool:
 
-            results = list(
-                tqdm(
-                    pool.starmap(
-                        pole_motion_correction,
-                        [
-                            (
-                                i_signal,
-                                frequencies,
-                                m_complex,
-                                model_grid[idx],
-                                love_number_log_frequencies,
-                            )
-                            for idx in grid_indices
-                        ],
-                    ),
-                    total=len(grid_indices),
-                    desc=model_name,
-                )
+            results = pool.starmap(
+                pole_motion_correction,
+                [
+                    (
+                        i_signal,
+                        frequencies,
+                        m_complex,
+                        model_grid[idx],
+                        love_number_log_frequencies,
+                    )
+                    for idx in grid_indices
+                ],
             )
 
         for idx, (c_model, s_model) in zip(grid_indices, results):
@@ -652,9 +642,14 @@ def save_solid_tide_corrections(
         multiline_text="".join(chunks_to_hard_code),
     )
     save_base_model(
-        obj=solid_tide_correction_models,
+        obj={element: tab.real for element, tab in solid_tide_correction_models.items()},
         path=models_path,
-        name=SOLID_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
+        name=SOLID_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME + "_real",
+    )
+    save_base_model(
+        obj={element: tab.imag for element, tab in solid_tide_correction_models.items()},
+        path=models_path,
+        name=SOLID_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME + "_imag",
     )
     save_base_model(obj=solid_tide_doodson_ids, name="solid_tide_doodson_ids", path=models_path)
     save_base_model(
