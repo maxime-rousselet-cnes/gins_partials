@@ -286,7 +286,7 @@ def write_constraint_block(
 
     for date_time in dates:
 
-        t = fractional_year_from_2000(date_time=date, days_per_year=DAYS_PER_YEAR)
+        t = fractional_year_from_2000(date_time=date_time, days_per_year=DAYS_PER_YEAR)
         param_coeffs = model_coefficients(
             t=t, annual=options[0], acceleration=options[1], omega=OMEGA
         )
