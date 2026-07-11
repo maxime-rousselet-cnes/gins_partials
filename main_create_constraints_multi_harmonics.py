@@ -424,11 +424,6 @@ def main() -> None:
         help="Sigma value written at the end of each constraint line.",
     )
     args = parser.parse_args()
-
-    if args.end < args.start:
-
-        raise SystemExit("--end must be greater than or equal to --start.")
-
     coeffs = args.coeff if args.coeff else DEFAULT_COEFFS
     generate_file(
         output=args.output,
