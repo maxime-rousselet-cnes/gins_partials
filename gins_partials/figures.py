@@ -236,7 +236,6 @@ def plot_pole_tide_models(
     log10_tau_m_values = array(
         object=load_base_model(name="log10_tau_m_values", path=tide_models_path), dtype=float
     )
-    # TODO? model_mask = array(object=load_base_model(name="model_mask", path=tide_models_path), dtype=bool)
     mask = (GINS_ARC_MONITORING_END_JJUL + GINS_ARC_MONITORING_JJUL_MARGIN >= jjul_dates) * (
         jjul_dates
         >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN - 500000  # TODO.
@@ -244,8 +243,8 @@ def plot_pole_tide_models(
     jjul_dates = jjul_dates[mask]
     axes: list[Axes]
     figure, axes = subplots(2, 1, figsize=(8, 8))
-    # TODO: axes[0].scatter(gins_model["dates"], gins_model["C"], label="GINS", s=2)
-    # TODO: axes[1].scatter(gins_model["dates"], gins_model["S"], s=2)
+    axes[0].scatter(gins_model["dates"], gins_model["C"], label="GINS", s=2)
+    axes[1].scatter(gins_model["dates"], gins_model["S"], s=2)
 
     for component, ax in zip("CS", axes):
 
@@ -260,11 +259,10 @@ def plot_pole_tide_models(
 
         for alpha, log10_delta, log10_tau_m in model_values_to_plot:
 
-            print(component, alpha, log10_delta)
             """
             TODO:
             ax.scatter(
-                jjul_dates[::100],  # TODO: gins_model["dates"],
+                gins_model["dates"],
                 lagrange_order4(
                     x=jjul_dates,
                     y=interpolate_by_axis(
@@ -280,12 +278,12 @@ def plot_pole_tide_models(
                             dtype=float,
                         )[:, :, :, mask],
                     ),
-                    new_x=jjul_dates,  # TODO: gins_model["dates"],
-                ),
-                # TODO: + sub_diurnal_correction,
+                    new_x= gins_model["dates"],
+                )+sub_diurnal_correction,
                 label=rf"$\alpha={alpha}$  $\Delta={10**log10_delta}$",
                 s=2,
             )
+            REMOVE:
             """
             ax.plot(
                 jjul_dates[::10],

@@ -418,17 +418,29 @@ def generate_pole_tide_models(
         love_numbers_model=K_2_IERS,
         love_number_log_frequencies=love_number_log_frequencies,
     )
-    pole_tide_correction_models["C"]["elastic"] += -PHI_CONSTANT * (
-        initial_values[0] - pole_tide_correction_models["C"]["elastic"][0]
+    pole_tide_correction_models["C"]["elastic"] += (
+        -PHI_CONSTANT * (K_2_IERS.real * initial_values[0] + K_2_IERS.imag * initial_values[1])
+        - pole_tide_correction_models["C"]["elastic"][0]
     )
-    pole_tide_correction_models["S"]["elastic"] += -PHI_CONSTANT * (
-        initial_values[1] - pole_tide_correction_models["S"]["elastic"][0]
+    pole_tide_correction_models["S"]["elastic"] += (
+        -PHI_CONSTANT
+        * (
+            K_2_IERS.imag * initial_values[0]  # TODO: Change sign?
+            - K_2_IERS.real * initial_values[1]
+        )
+        - pole_tide_correction_models["S"]["elastic"][0]
     )
-    pole_tide_correction_models["C"]["IERS"] += -PHI_CONSTANT * (
-        initial_values[0] - pole_tide_correction_models["C"]["IERS"][0]
+    pole_tide_correction_models["C"]["IERS"] += (
+        -PHI_CONSTANT * (K_2_IERS.real * initial_values[0] + K_2_IERS.imag * initial_values[1])
+        - pole_tide_correction_models["C"]["IERS"][0]
     )
-    pole_tide_correction_models["S"]["IERS"] += -PHI_CONSTANT * (
-        initial_values[1] - pole_tide_correction_models["S"]["IERS"][0]
+    pole_tide_correction_models["S"]["IERS"] += (
+        -PHI_CONSTANT
+        * (
+            K_2_IERS.imag * initial_values[0]  # TODO: Change sign?
+            - K_2_IERS.real * initial_values[1]
+        )
+        - pole_tide_correction_models["S"]["IERS"][0]
     )
     grid_indices = list(ndindex(love_numbers.shape[:3]))
     for model_name, model_grid in tqdm(
@@ -457,11 +469,18 @@ def generate_pole_tide_models(
 
         for idx, (c_model, s_model) in zip(grid_indices, results):
 
-            pole_tide_correction_models["C"][model_name][idx] = c_model - PHI_CONSTANT * (
-                initial_values[0] - c_model[0]
+            pole_tide_correction_models["C"][model_name][idx] = c_model + (
+                -PHI_CONSTANT
+                * (K_2_IERS.real * initial_values[0] + K_2_IERS.imag * initial_values[1])
+                - c_model[0]
             )
-            pole_tide_correction_models["S"][model_name][idx] = s_model - PHI_CONSTANT * (
-                initial_values[1] - s_model[0]
+            pole_tide_correction_models["S"][model_name][idx] = s_model + (
+                -PHI_CONSTANT
+                * (
+                    K_2_IERS.imag * initial_values[0]  # TODO: Change sign?
+                    - K_2_IERS.real * initial_values[1]
+                )
+                - s_model[0]
             )
 
     return n_parameter_values, love_numbers_for_gins_tabs, pole_tide_correction_models
