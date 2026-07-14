@@ -351,19 +351,19 @@ def interpolate_love_number_grid_to_solid_tides(
     return interpolated
 
 
-def generate_tide_models(
+def generate_pole_tide_models(
     m_complex: ndarray,
     i_signal: tuple[int, int],
     initial_values: tuple[int, int],
     frequencies: ndarray,  # (yr^-1).
     file_path: Path = SOLID_EARTH_NUMERICAL_MODELS_PATH.joinpath(DEFAULT_FOR_GINS_OUTPUT_DIRECTORY),
 ) -> tuple[
-    dict[str, ndarray], dict[str, dict[str, ndarray]], dict[str, dict[float, ndarray]]
-]:  # Parameter tabs, then pole tide, then solid tide.
+    int, dict[str, ndarray], dict[str, dict[str, ndarray]]
+]:  # n_parameter_values, Parameter tabs, then pole tide.
     """
-    Build pole tide C/S correction series for k2 and its partials, and the interpolated k2 to zonal
-    long-period tides. Output model grids have shape (n_alpha, n_delta, n_tau_m, n_dates/n_periods).
-    The second and third axes correspond to log10_delta_values and log10_tau_m_values.
+    Build pole tide C/S correction series for k2 and its partials. Output model grids have shape
+    (n_alpha, n_delta, n_tau_m, n_dates/n_periods). The second and third axes correspond to
+    log10_delta_values and log10_tau_m_values.
     """
 
     n_parameter_values = len(
@@ -398,13 +398,6 @@ def generate_tide_models(
         }
         for component in "CS"
     }
-    solid_tide_correction_models: dict[str, ndarray] = {
-        model_name: zeros(
-            shape=tuple(list(love_numbers.shape[:3]) + [len(IERS_LONG_PERIOD_ZONAL_TIDES)]),
-            dtype=complex,
-        )
-        for model_name in MODEL_NAMES
-    }
     (
         pole_tide_correction_models["C"]["elastic"],
         pole_tide_correction_models["S"]["elastic"],
@@ -438,9 +431,6 @@ def generate_tide_models(
         initial_values[1] - pole_tide_correction_models["S"]["IERS"][0]
     )
     grid_indices = list(ndindex(love_numbers.shape[:3]))
-    solid_tide_frequencies = tide_angular_frequencies_to_cycle_per_yr()
-    solid_tide_correction_models["elastic"][...] = elastic[0]
-    solid_tide_correction_models["IERS"][...] = complex(K_2_IERS)
     for model_name, model_grid in tqdm(
         zip(
             ["anelastic", "alpha_partials", "log10_delta_partials", "log10_tau_m_partials"],
@@ -448,12 +438,6 @@ def generate_tide_models(
         ),
         total=4,
     ):
-
-        solid_tide_correction_models[model_name][...] = interpolate_love_number_grid_to_solid_tides(
-            model_grid=model_grid,
-            love_number_log_frequencies=love_number_log_frequencies,
-            solid_tide_frequencies=solid_tide_frequencies,
-        )
 
         with Pool() as pool:
 
@@ -480,7 +464,65 @@ def generate_tide_models(
                 initial_values[1] - s_model[0]
             )
 
-    return love_numbers_for_gins_tabs, pole_tide_correction_models, solid_tide_correction_models
+    return n_parameter_values, love_numbers_for_gins_tabs, pole_tide_correction_models
+
+
+def generate_solid_tide_models(
+    n_parameter_values: int,
+    love_numbers_for_gins_tabs: dict[str, ndarray],
+    file_path: Path = SOLID_EARTH_NUMERICAL_MODELS_PATH.joinpath(DEFAULT_FOR_GINS_OUTPUT_DIRECTORY),
+) -> dict[str, dict[float, ndarray]]:
+    """
+    Build the interpolated k2 to zonal long-period tides.
+    """
+
+    n_parameter_values = len(
+        unique(
+            [
+                file.name.split("alpha")[1].split("Delta")[0]
+                for file in file_path.glob("*")
+                if "period" not in file.name
+            ]
+        )
+    )
+    (
+        love_number_periods,
+        elastic,
+        love_numbers,
+        love_numbers_partials,
+    ) = load_love_numbers_for_gins(
+        dummy_variable=n_parameter_values,
+        models=MODELS,
+        path=file_path.parent,
+        directory=file_path.name,
+        love_numbers_for_gins_tabs=love_numbers_for_gins_tabs,
+    )
+    love_number_log_frequencies = log(1 / love_number_periods)  # (yr^-1).
+    solid_tide_correction_models: dict[str, ndarray] = {
+        model_name: zeros(
+            shape=tuple(list(love_numbers.shape[:3]) + [len(IERS_LONG_PERIOD_ZONAL_TIDES)]),
+            dtype=complex,
+        )
+        for model_name in MODEL_NAMES
+    }
+    solid_tide_frequencies = tide_angular_frequencies_to_cycle_per_yr()
+    solid_tide_correction_models["elastic"][...] = elastic[0]
+    solid_tide_correction_models["IERS"][...] = complex(K_2_IERS)
+    for model_name, model_grid in tqdm(
+        zip(
+            ["anelastic", "alpha_partials", "log10_delta_partials", "log10_tau_m_partials"],
+            [love_numbers] + list(love_numbers_partials.values()),
+        ),
+        total=4,
+    ):
+
+        solid_tide_correction_models[model_name][...] = interpolate_love_number_grid_to_solid_tides(
+            model_grid=model_grid,
+            love_number_log_frequencies=love_number_log_frequencies,
+            solid_tide_frequencies=solid_tide_frequencies,
+        )
+
+    return solid_tide_correction_models
 
 
 def save_pole_tide_corrections(
@@ -701,11 +743,14 @@ def preprocess_and_save_tide_correction_partials(
         n=len(steady_state_dates), d=steady_state_dates[1] - steady_state_dates[0]
     )
     m_complex = fft(x=steady_state_m_1) - 1j * fft(x=steady_state_m_2)
-    tabs, pole_models, solid_models = generate_tide_models(
+    n_parameter_values, tabs, pole_models = generate_pole_tide_models(
         m_complex=m_complex,
         i_signal=(i_signal_start, len(dates)),
         initial_values=(m_1[0] + mean_m_1, m_2[0] + mean_m_2),
         frequencies=frequencies,
+    )
+    solid_models = generate_solid_tide_models(
+        n_parameter_values=n_parameter_values, love_numbers_for_gins_tabs=tabs
     )
     save_pole_tide_corrections(
         dates=dates,
