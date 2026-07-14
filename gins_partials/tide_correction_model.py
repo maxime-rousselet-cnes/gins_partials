@@ -26,7 +26,7 @@ from base_models import (
     lagrange_order4,
     save_base_model,
 )
-from numpy import argmin, array, asarray, conjugate, log, log10, ndarray, ndindex, unique, zeros
+from numpy import array, asarray, conjugate, log, log10, mean, ndarray, ndindex, unique, zeros
 from scipy.fft import fft, fftfreq, ifft
 from tqdm import tqdm
 
@@ -41,6 +41,7 @@ from .utils import (
     get_m1_m2_time_series,
 )
 
+LONG_TERM_HYPOTHESIS_PERIOD = 10000  # (yr).
 MAX_STATEMENT_LENGTH = 20000
 MAX_LINE_LENGTH = 6800
 DEFAULT_POLE_TIDE_CORRECTION_FILE = ROOT_PATH.parent.parent.joinpath(
@@ -123,7 +124,7 @@ def pole_motion_correction(
 
     assert len(frequencies) == len(m_complex)
 
-    if not isinstance(love_numbers_model, ndarray):
+    if not isinstance(love_numbers_model, (ndarray, list)):
 
         love_number = complex(love_numbers_model)
         love_numbers = love_number * asarray(
@@ -144,6 +145,7 @@ def pole_motion_correction(
             y=love_numbers_model.imag[0],
             new_x=log(frequencies[positive]),
         )
+
         freq_to_index = {round(float(f), 10): i for i, f in enumerate(frequencies)}
 
         for i_period, frequency in enumerate(frequencies):
@@ -154,11 +156,11 @@ def pole_motion_correction(
                     love_numbers[freq_to_index[round(float(abs(frequency)), 10)]]
                 )
 
-            elif frequency == 0:
+            if abs(frequency) < 1 / LONG_TERM_HYPOTHESIS_PERIOD:
 
-                love_numbers[i_period] = love_numbers_model[0][argmin(love_number_log_frequencies)]
+                m_complex[i_period] = 0
 
-    # Solid Earth pole tide. The result is C21 - i*S21 in the frequency domain.
+    # Solid Earth pole tide. The result is C21 + i*S21 in the frequency domain.
     phi_se_pt_complex: ndarray = -PHI_CONSTANT * love_numbers * m_complex
     coherent_pole_tide_correction: ndarray = ifft(phi_se_pt_complex)
     i_signal_start, i_signal_stop = i_signal
@@ -335,7 +337,7 @@ def interpolate_love_number_grid_to_solid_tides(
 
     for idx in ndindex(model_grid.shape[:3]):
 
-        k2_series = model_grid[idx][0]
+        k2_series: ndarray = model_grid[idx][0]
         interpolated[idx] = lagrange_order4(
             x=love_number_log_frequencies,
             y=k2_series.real,
@@ -352,9 +354,9 @@ def interpolate_love_number_grid_to_solid_tides(
 def generate_tide_models(
     m_complex: ndarray,
     i_signal: tuple[int, int],
+    initial_values: tuple[int, int],
     frequencies: ndarray,  # (yr^-1).
-    path: Path = SOLID_EARTH_NUMERICAL_MODELS_PATH,
-    directory: str = DEFAULT_FOR_GINS_OUTPUT_DIRECTORY,
+    file_path: Path = SOLID_EARTH_NUMERICAL_MODELS_PATH.joinpath(DEFAULT_FOR_GINS_OUTPUT_DIRECTORY),
 ) -> tuple[
     dict[str, ndarray], dict[str, dict[str, ndarray]], dict[str, dict[float, ndarray]]
 ]:  # Parameter tabs, then pole tide, then solid tide.
@@ -368,7 +370,7 @@ def generate_tide_models(
         unique(
             [
                 file.name.split("alpha")[1].split("Delta")[0]
-                for file in path.joinpath(directory).glob("*")
+                for file in file_path.glob("*")
                 if "period" not in file.name
             ]
         )
@@ -382,10 +384,10 @@ def generate_tide_models(
         love_numbers,
         love_numbers_partials,
     ) = load_love_numbers_for_gins(
-        n_parameter_values=n_parameter_values,
+        dummy_variable=n_parameter_values,
         models=MODELS,
-        path=path,
-        directory=directory,
+        path=file_path.parent,
+        directory=file_path.name,
         love_numbers_for_gins_tabs=love_numbers_for_gins_tabs,
     )
     love_number_log_frequencies = log(1 / love_number_periods)  # (yr^-1).
@@ -423,6 +425,18 @@ def generate_tide_models(
         love_numbers_model=K_2_IERS,
         love_number_log_frequencies=love_number_log_frequencies,
     )
+    pole_tide_correction_models["C"]["elastic"] += -PHI_CONSTANT * (
+        initial_values[0] - pole_tide_correction_models["C"]["elastic"][0]
+    )
+    pole_tide_correction_models["S"]["elastic"] += -PHI_CONSTANT * (
+        initial_values[1] - pole_tide_correction_models["S"]["elastic"][0]
+    )
+    pole_tide_correction_models["C"]["IERS"] += -PHI_CONSTANT * (
+        initial_values[0] - pole_tide_correction_models["C"]["IERS"][0]
+    )
+    pole_tide_correction_models["S"]["IERS"] += -PHI_CONSTANT * (
+        initial_values[1] - pole_tide_correction_models["S"]["IERS"][0]
+    )
     grid_indices = list(ndindex(love_numbers.shape[:3]))
     solid_tide_frequencies = tide_angular_frequencies_to_cycle_per_yr()
     solid_tide_correction_models["elastic"][...] = elastic[0]
@@ -459,8 +473,12 @@ def generate_tide_models(
 
         for idx, (c_model, s_model) in zip(grid_indices, results):
 
-            pole_tide_correction_models["C"][model_name][idx] = c_model
-            pole_tide_correction_models["S"][model_name][idx] = s_model
+            pole_tide_correction_models["C"][model_name][idx] = c_model - PHI_CONSTANT * (
+                initial_values[0] - c_model[0]
+            )
+            pole_tide_correction_models["S"][model_name][idx] = s_model - PHI_CONSTANT * (
+                initial_values[1] - s_model[0]
+            )
 
     return love_numbers_for_gins_tabs, pole_tide_correction_models, solid_tide_correction_models
 
@@ -665,15 +683,17 @@ def preprocess_and_save_tide_correction_partials(
     dates, m_1, m_2 = get_m1_m2_time_series(
         models_path=models_path, pole_motion_file=pole_motion_file
     )
+    mean_m_1 = mean(a=m_1[: len(m_1)])
+    mean_m_2 = mean(a=m_2[: len(m_2)])
     i_signal_start, steady_state_dates, steady_state_m_1 = build_steady_state_regime_signal(
         t=dates,
-        signal=m_1 - m_1[0],
+        signal=m_1 - mean_m_1,
         plateau_length=steady_state_signal_parameters.plateau_length,
         cubic_spline_length=steady_state_signal_parameters.cubic_spline_length,
     )
     _, _, steady_state_m_2 = build_steady_state_regime_signal(
         t=dates,
-        signal=m_2 - m_2[0],
+        signal=m_2 - mean_m_2,
         plateau_length=steady_state_signal_parameters.plateau_length,
         cubic_spline_length=steady_state_signal_parameters.cubic_spline_length,
     )
@@ -684,6 +704,7 @@ def preprocess_and_save_tide_correction_partials(
     tabs, pole_models, solid_models = generate_tide_models(
         m_complex=m_complex,
         i_signal=(i_signal_start, len(dates)),
+        initial_values=(m_1[0] + mean_m_1, m_2[0] + mean_m_2),
         frequencies=frequencies,
     )
     save_pole_tide_corrections(

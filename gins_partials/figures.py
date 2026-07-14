@@ -15,6 +15,7 @@ from .listing_getters import read_for_partials
 from .tide_correction_model import (
     POLE_MODELS_PATH,
     POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
+    TIDE_MODELS_PATH,
     dates_to_jjul_dates,
 )
 from .utils import get_m1_m2_time_series
@@ -23,7 +24,7 @@ GINS_ARC_MONITORING_SHORTCUT_PLOTTER = 100
 GINS_ARC_MONITORING_START_JJUL = 25080
 GINS_ARC_MONITORING_END_JJUL = 25110
 GINS_ARC_MONITORING_JJUL_MARGIN = 30
-DEFAULT_MODEL_VALUES_TO_PLOT = [(0.2, 5), (0.2, 10), (0.25, 5), (0.25, 10)]
+DEFAULT_MODEL_VALUES_TO_PLOT = [(0.2, 0, 3.51), (0.2, -1, 3.51), (0.25, 0, 3.51), (0.25, -1, 3.51)]
 
 
 def get_gins_pole_motion_time_series(
@@ -128,17 +129,12 @@ def plot_pole_motion(
     axes: list[Axes]
     figure, axes = subplots(2, 1, figsize=(8, 8))
     target_dates = gins_dates[::GINS_ARC_MONITORING_SHORTCUT_PLOTTER]
-    axes[0].plot(
-        target_dates,
-        lagrange_order4(x=jjul_dates, y=m_1, new_x=target_dates),
-        label=r"C01",
+    axes[0].scatter(
+        target_dates, lagrange_order4(x=jjul_dates, y=m_1, new_x=target_dates), label=r"C01", s=2
     )
-    axes[0].plot(gins_dates, u, label="Including sub-diurnal")
-    axes[1].plot(
-        target_dates,
-        lagrange_order4(x=jjul_dates, y=m_2, new_x=target_dates),
-    )
-    axes[1].plot(gins_dates, v)
+    axes[0].scatter(gins_dates, u, label="Including high frequencies", s=2)
+    axes[1].scatter(target_dates, lagrange_order4(x=jjul_dates, y=m_2, new_x=target_dates), s=2)
+    axes[1].scatter(gins_dates, v, s=2)
     axes[0].set_ylabel(ylabel=r"$m_1$")
     axes[1].set_ylabel(ylabel=r"$m_2$")
     axes[1].set_xlabel(xlabel=r"$J_{julian}$")
@@ -147,47 +143,63 @@ def plot_pole_motion(
 
 
 def interpolate_by_axis(
-    alpha_delta_values: tuple[ndarray, ndarray],
+    alpha_delta_tau_m_values: tuple[ndarray, ndarray],
     jjul_dates: ndarray,
-    alpha: float,
-    delta: float,
+    alpha_delta_tau_m: float,
     pole_tide_correction_model: ndarray,
 ) -> ndarray:
     """
     Interpolates axis by axis for plot purposes.
     """
 
-    alpha_values, delta_values = alpha_delta_values
-    pole_tide_correction_array = zeros(shape=(len(delta_values), len(jjul_dates)))
+    alpha_values, log10_delta_values, log10_tau_m_values = alpha_delta_tau_m_values
+    alpha, log10_delta, log10_tau_m = alpha_delta_tau_m
+    pole_tide_correction_array = zeros(
+        shape=(len(log10_delta_values), len(log10_tau_m_values), len(jjul_dates))
+    )
 
-    for i_delta, _ in enumerate(delta_values):
+    for i_delta, _ in enumerate(log10_delta_values):
+
+        for i_tau_m, _ in enumerate(log10_tau_m_values):
+
+            for i_date, _ in enumerate(jjul_dates):
+
+                pole_tide_correction_array[i_delta, i_tau_m, i_date] = lagrange_order4(
+                    x=alpha_values,
+                    y=pole_tide_correction_model[:, i_delta, i_tau_m, i_date],
+                    new_x=[alpha],
+                )[0]
+
+    pole_tide_correction_tab = zeros(shape=(len(log10_tau_m_values), len(jjul_dates)))
+
+    for i_tau_m, _ in enumerate(log10_tau_m_values):
 
         for i_date, _ in enumerate(jjul_dates):
 
-            pole_tide_correction_array[i_delta, i_date] = lagrange_order4(
-                x=alpha_values,
-                y=pole_tide_correction_model[:, i_delta, i_date],
-                new_x=[alpha],
+            pole_tide_correction_tab[i_tau_m, i_date] = lagrange_order4(
+                x=log10_delta_values,
+                y=pole_tide_correction_array[:, i_tau_m, i_date],
+                new_x=[log10_delta],
             )[0]
 
-    pole_tide_correction_tab = zeros(shape=len(jjul_dates))
+    pole_tide_correction = zeros(shape=len(jjul_dates))
 
     for i_date, _ in enumerate(jjul_dates):
 
-        pole_tide_correction_tab[i_date] = lagrange_order4(
-            x=delta_values,
-            y=pole_tide_correction_array[:, i_date],
-            new_x=[delta],
+        pole_tide_correction[i_date] = lagrange_order4(
+            x=log10_tau_m_values,
+            y=pole_tide_correction_tab[:, i_date],
+            new_x=[log10_tau_m],
         )[0]
 
-    return pole_tide_correction_tab
+    return pole_tide_correction
 
 
 def plot_pole_tide_models(
     path: Path = Path("."),
     file: str = "gins_listing",
-    models_path: Path = POLE_MODELS_PATH,
-    pole_motion_file: str = POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
+    tide_models_path: Path = TIDE_MODELS_PATH,
+    pole_tide_file: str = POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
     model_values_to_plot: Optional[list[tuple[float, float]]] = None,
 ) -> None:
     """
@@ -202,96 +214,138 @@ def plot_pole_tide_models(
     gins_model["dates"], gins_model["C"], gins_model["S"] = get_gins_pole_tide(path=path, file=file)
     mask = (
         GINS_ARC_MONITORING_END_JJUL + GINS_ARC_MONITORING_JJUL_MARGIN >= gins_model["dates"]
-    ) * (gins_model["dates"] >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN)
+    ) * (
+        gins_model["dates"]
+        >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN - 500000  # TODO.
+    )
 
     for component in ["C", "S", "dates"]:
 
         gins_model[component] = gins_model[component][mask][::GINS_ARC_MONITORING_SHORTCUT_PLOTTER]
 
-    pole_tide_correction_models = load_base_model(name=pole_motion_file, path=models_path)
-    jjul_dates = array(object=load_base_model(name="jjul_dates", path=models_path), dtype=float)
-    alpha_values = array(object=load_base_model(name="alpha_values", path=models_path), dtype=float)
-    delta_values = array(object=load_base_model(name="delta_values", path=models_path), dtype=float)
-    model_mask = array(object=load_base_model(name="model_mask", path=models_path), dtype=bool)
+    pole_tide_correction_models = load_base_model(name=pole_tide_file, path=tide_models_path)
+    jjul_dates = array(
+        object=load_base_model(name="jjul_dates", path=tide_models_path), dtype=float
+    )
+    alpha_values = array(
+        object=load_base_model(name="alpha_values", path=tide_models_path), dtype=float
+    )
+    log10_delta_values = array(
+        object=load_base_model(name="log10_delta_values", path=tide_models_path), dtype=float
+    )
+    log10_tau_m_values = array(
+        object=load_base_model(name="log10_tau_m_values", path=tide_models_path), dtype=float
+    )
+    # TODO? model_mask = array(object=load_base_model(name="model_mask", path=tide_models_path), dtype=bool)
     mask = (GINS_ARC_MONITORING_END_JJUL + GINS_ARC_MONITORING_JJUL_MARGIN >= jjul_dates) * (
-        jjul_dates >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN
+        jjul_dates
+        >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN - 500000  # TODO.
     )
     jjul_dates = jjul_dates[mask]
     axes: list[Axes]
     figure, axes = subplots(2, 1, figsize=(8, 8))
-    axes[0].plot(gins_model["dates"], gins_model["C"], label="GINS")
-    axes[1].plot(gins_model["dates"], gins_model["S"])
+    # TODO: axes[0].scatter(gins_model["dates"], gins_model["C"], label="GINS", s=2)
+    # TODO: axes[1].scatter(gins_model["dates"], gins_model["S"], s=2)
 
     for component, ax in zip("CS", axes):
 
         sub_diurnal_correction = gins_model[component] - lagrange_order4(
             x=jjul_dates,
             y=array(
-                object=pole_tide_correction_models[component]["potential"]["elastic_love_numbers"],
+                object=pole_tide_correction_models[component]["elastic"],
                 dtype=float,
-            )[model_mask][mask],
+            )[mask],
             new_x=gins_model["dates"],
         )
 
-        for alpha, delta in model_values_to_plot:
+        for alpha, log10_delta, log10_tau_m in model_values_to_plot:
 
-            ax.plot(
-                gins_model["dates"],
+            print(component, alpha, log10_delta)
+            """
+            TODO:
+            ax.scatter(
+                jjul_dates[::100],  # TODO: gins_model["dates"],
                 lagrange_order4(
                     x=jjul_dates,
                     y=interpolate_by_axis(
-                        alpha_delta_values=(alpha_values, delta_values),
+                        alpha_delta_tau_m_values=(
+                            alpha_values,
+                            log10_delta_values,
+                            log10_tau_m_values,
+                        ),
                         jjul_dates=jjul_dates,
-                        alpha=alpha,
-                        delta=delta,
+                        alpha_delta_tau_m=(alpha, log10_delta, log10_tau_m),
                         pole_tide_correction_model=array(
-                            object=pole_tide_correction_models[component]["potential"][
-                                "love_numbers"
-                            ],
+                            object=pole_tide_correction_models[component]["anelastic"],
                             dtype=float,
-                        )[:, :, model_mask][:, :, mask],
+                        )[:, :, :, mask],
                     ),
-                    new_x=gins_model["dates"],
-                )
-                + sub_diurnal_correction,
-                label=rf"$\alpha={alpha}$  $\Delta={delta}$",
+                    new_x=jjul_dates,  # TODO: gins_model["dates"],
+                ),
+                # TODO: + sub_diurnal_correction,
+                label=rf"$\alpha={alpha}$  $\Delta={10**log10_delta}$",
+                s=2,
+            )
+            """
+            ax.plot(
+                jjul_dates[::10],
+                interpolate_by_axis(
+                    alpha_delta_tau_m_values=(
+                        alpha_values,
+                        log10_delta_values,
+                        log10_tau_m_values,
+                    ),
+                    jjul_dates=jjul_dates[::10],
+                    alpha_delta_tau_m=(alpha, log10_delta, log10_tau_m),
+                    pole_tide_correction_model=array(
+                        object=pole_tide_correction_models[component]["anelastic"],
+                        dtype=float,
+                    )[:, :, :, mask][:, :, :, ::10],
+                ),
+                label=rf"$\alpha={alpha}$  $\Delta={10**log10_delta}$",
             )
 
     axes[0].set_ylabel(ylabel=r"$C_{21}$")
     axes[1].set_ylabel(ylabel=r"$S_{21}$")
     axes[1].set_xlabel(xlabel=r"$J_{julian}$")
     axes[0].legend()
+    show()
     save_figure(figure=figure, figure_title="pole_tide_models")
 
 
 def compare_acceleration_partials_to_finite_differences(
-    dalpha: float = 0.005, ddelta: float = 0.05
+    d_parameter: float = 0.01,
+    satellite: str = "ajisai",
 ) -> None:
 
-    epochs, _, alpha_formal, delta_formal = read_for_partials(filename="starlette_partials_test")
-    _, acc_alpha_plus, _, _ = read_for_partials(
-        filename="starlette_partials_test_alpha_plus_" + str(dalpha)
+    epochs, acceleration, alpha_formal, log10_delta_formal, log10_tau_m_formal = read_for_partials(
+        filename=f"rheology_{satellite}_checkup.yml"
     )
-    _, acc_alpha_minus, _, _ = read_for_partials(
-        filename="starlette_partials_test_alpha_minus_" + str(dalpha)
+    _, acceleration_alpha_plus_d_alpha, _, _ = read_for_partials(
+        filename=f"rheology_{satellite}_checkup_alpha_plus_" + str(d_parameter) + ".yml"
     )
-    _, acc_delta_plus, _, _ = read_for_partials(
-        filename="starlette_partials_test_delta_plus_" + str(ddelta)
+    _, acceleration_log10_delta_plus_d_log10_delta, _, _ = read_for_partials(
+        filename=f"rheology_{satellite}_checkup_log10_delta_plus_" + str(d_parameter) + ".yml"
     )
-    _, acc_delta_minus, _, _ = read_for_partials(
-        filename="starlette_partials_test_delta_minus_" + str(ddelta)
+    _, acceleration_tau_m_plus_d_log10_tau_m, _, _ = read_for_partials(
+        filename=f"rheology_{satellite}_checkup_log10_tau_m_plus_" + str(d_parameter) + ".yml"
     )
-    alpha_fd = (acc_alpha_plus - acc_alpha_minus) / (2.0 * dalpha)
-    delta_fd = (acc_delta_plus - acc_delta_minus) / (2.0 * ddelta)
+    alpha_finite_difference = (acceleration_alpha_plus_d_alpha - acceleration) / d_parameter
+    log10_delta_finite_difference = (
+        acceleration_log10_delta_plus_d_log10_delta - acceleration
+    ) / d_parameter
+    log10_tau_m_finite_difference = (
+        acceleration_tau_m_plus_d_log10_tau_m - acceleration
+    ) / d_parameter
 
     axes: Iterable[Iterable[Axes]]
-    fig, axes = subplots(3, 2, figsize=(12, 10), sharex=True)
+    fig, axes = subplots(3, 3, figsize=(12, 10), sharex=True)
 
     for (i, ax_line), component in zip(enumerate(axes), ["X", "Y", "Z"]):
 
-        for ax, parameter in zip(ax_line, ["alpha", "delta"]):
+        for ax, parameter in zip(ax_line, ["alpha", "\log_10(\delta)", "\log_10(\tau_m)"]):
 
-            if parameter == "alpha":
+            if "alpha" in parameter:
 
                 ax.scatter(
                     epochs,
@@ -302,8 +356,25 @@ def compare_acceleration_partials_to_finite_differences(
                 )
                 ax.scatter(
                     epochs,
-                    alpha_fd[:, i],
+                    alpha_finite_difference[:, i],
                     color="b",
+                    marker="o",
+                    label="finite differences" if i == 0 else None,
+                )
+
+            elif "elta" in parameter:
+
+                ax.scatter(
+                    epochs,
+                    log10_delta_formal[:, i],
+                    color="r",
+                    marker="x",
+                    label="formal" if i == 0 else None,
+                )
+                ax.scatter(
+                    epochs,
+                    log10_delta_finite_difference[:, i],
+                    color="r",
                     marker="o",
                     label="finite differences" if i == 0 else None,
                 )
@@ -312,14 +383,14 @@ def compare_acceleration_partials_to_finite_differences(
 
                 ax.scatter(
                     epochs,
-                    delta_formal[:, i],
+                    log10_tau_m_formal[:, i],
                     color="r",
                     marker="x",
                     label="formal" if i == 0 else None,
                 )
                 ax.scatter(
                     epochs,
-                    delta_fd[:, i],
+                    log10_tau_m_finite_difference[:, i],
                     color="r",
                     marker="o",
                     label="finite differences" if i == 0 else None,
@@ -335,7 +406,7 @@ def compare_acceleration_partials_to_finite_differences(
 
     ax.set_xlabel("JJul")
 
-    fig.suptitle("Finite difference comparision to formal partials")
+    fig.suptitle("Finite difference comparison to formal partials")
 
     tight_layout()
     show()
