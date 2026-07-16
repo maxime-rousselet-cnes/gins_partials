@@ -152,32 +152,31 @@ def interpolate_by_axis(
     Interpolates axis by axis for plot purposes.
     """
 
-    alpha_values, log10_delta_values, log10_tau_m_values = alpha_delta_tau_m_values
     alpha, log10_delta, log10_tau_m = alpha_delta_tau_m
     pole_tide_correction_array = zeros(
-        shape=(len(log10_delta_values), len(log10_tau_m_values), len(jjul_dates))
+        shape=(len(alpha_delta_tau_m_values[1]), len(alpha_delta_tau_m_values[2]), len(jjul_dates))
     )
 
-    for i_delta, _ in enumerate(log10_delta_values):
+    for i_delta, _ in enumerate(alpha_delta_tau_m_values[1]):
 
-        for i_tau_m, _ in enumerate(log10_tau_m_values):
+        for i_tau_m, _ in enumerate(alpha_delta_tau_m_values[2]):
 
             for i_date, _ in enumerate(jjul_dates):
 
                 pole_tide_correction_array[i_delta, i_tau_m, i_date] = lagrange_order4(
-                    x=alpha_values,
+                    x=alpha_delta_tau_m_values[0],
                     y=pole_tide_correction_model[:, i_delta, i_tau_m, i_date],
                     new_x=[alpha],
                 )[0]
 
-    pole_tide_correction_tab = zeros(shape=(len(log10_tau_m_values), len(jjul_dates)))
+    pole_tide_correction_tab = zeros(shape=(len(alpha_delta_tau_m_values[2]), len(jjul_dates)))
 
-    for i_tau_m, _ in enumerate(log10_tau_m_values):
+    for i_tau_m, _ in enumerate(alpha_delta_tau_m_values[2]):
 
         for i_date, _ in enumerate(jjul_dates):
 
             pole_tide_correction_tab[i_tau_m, i_date] = lagrange_order4(
-                x=log10_delta_values,
+                x=alpha_delta_tau_m_values[1],
                 y=pole_tide_correction_array[:, i_tau_m, i_date],
                 new_x=[log10_delta],
             )[0]
@@ -187,7 +186,7 @@ def interpolate_by_axis(
     for i_date, _ in enumerate(jjul_dates):
 
         pole_tide_correction[i_date] = lagrange_order4(
-            x=log10_tau_m_values,
+            x=alpha_delta_tau_m_values[2],
             y=pole_tide_correction_tab[:, i_date],
             new_x=[log10_tau_m],
         )[0]
@@ -214,10 +213,7 @@ def plot_pole_tide_models(
     gins_model["dates"], gins_model["C"], gins_model["S"] = get_gins_pole_tide(path=path, file=file)
     mask = (
         GINS_ARC_MONITORING_END_JJUL + GINS_ARC_MONITORING_JJUL_MARGIN >= gins_model["dates"]
-    ) * (
-        gins_model["dates"]
-        >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN - 500000  # TODO.
-    )
+    ) * (gins_model["dates"] >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN)
 
     for component in ["C", "S", "dates"]:
 
@@ -237,8 +233,7 @@ def plot_pole_tide_models(
         object=load_base_model(name="log10_tau_m_values", path=tide_models_path), dtype=float
     )
     mask = (GINS_ARC_MONITORING_END_JJUL + GINS_ARC_MONITORING_JJUL_MARGIN >= jjul_dates) * (
-        jjul_dates
-        >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN - 500000  # TODO.
+        jjul_dates >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN
     )
     jjul_dates = jjul_dates[mask]
     axes: list[Axes]
@@ -256,11 +251,19 @@ def plot_pole_tide_models(
             )[mask],
             new_x=gins_model["dates"],
         )
+        ax.scatter(
+            gins_model["dates"],
+            lagrange_order4(
+                x=jjul_dates,
+                y=array(object=pole_tide_correction_models[component]["IERS"], dtype=float)[mask],
+                new_x=gins_model["dates"],
+            )
+            + sub_diurnal_correction,
+            label="IERS",
+        )
 
         for alpha, log10_delta, log10_tau_m in model_values_to_plot:
 
-            """
-            TODO:
             ax.scatter(
                 gins_model["dates"],
                 lagrange_order4(
@@ -278,36 +281,17 @@ def plot_pole_tide_models(
                             dtype=float,
                         )[:, :, :, mask],
                     ),
-                    new_x= gins_model["dates"],
-                )+sub_diurnal_correction,
+                    new_x=gins_model["dates"],
+                )
+                + sub_diurnal_correction,
                 label=rf"$\alpha={alpha}$  $\Delta={10**log10_delta}$",
                 s=2,
-            )
-            REMOVE:
-            """
-            ax.plot(
-                jjul_dates[::10],
-                interpolate_by_axis(
-                    alpha_delta_tau_m_values=(
-                        alpha_values,
-                        log10_delta_values,
-                        log10_tau_m_values,
-                    ),
-                    jjul_dates=jjul_dates[::10],
-                    alpha_delta_tau_m=(alpha, log10_delta, log10_tau_m),
-                    pole_tide_correction_model=array(
-                        object=pole_tide_correction_models[component]["anelastic"],
-                        dtype=float,
-                    )[:, :, :, mask][:, :, :, ::10],
-                ),
-                label=rf"$\alpha={alpha}$  $\Delta={10**log10_delta}$",
             )
 
     axes[0].set_ylabel(ylabel=r"$C_{21}$")
     axes[1].set_ylabel(ylabel=r"$S_{21}$")
     axes[1].set_xlabel(xlabel=r"$J_{julian}$")
     axes[0].legend()
-    show()
     save_figure(figure=figure, figure_title="pole_tide_models")
 
 
@@ -315,18 +299,24 @@ def compare_acceleration_partials_to_finite_differences(
     d_parameter: float = 0.01,
     satellite: str = "ajisai",
 ) -> None:
+    """
+    Partial derivatives validation figure for a single arc at a single parameter value.
+    """
 
     epochs, acceleration, alpha_formal, log10_delta_formal, log10_tau_m_formal = read_for_partials(
-        filename=f"rheology_{satellite}_checkup.yml"
+        filename=f"rheology_{satellite}_checkup.yml", path=Path(".")
     )
-    _, acceleration_alpha_plus_d_alpha, _, _ = read_for_partials(
-        filename=f"rheology_{satellite}_checkup_alpha_plus_" + str(d_parameter) + ".yml"
+    _, acceleration_alpha_plus_d_alpha, _, _, _ = read_for_partials(
+        filename=f"rheology_{satellite}_checkup_alpha_plus_" + str(d_parameter),
+        path=Path("."),
     )
-    _, acceleration_log10_delta_plus_d_log10_delta, _, _ = read_for_partials(
-        filename=f"rheology_{satellite}_checkup_log10_delta_plus_" + str(d_parameter) + ".yml"
+    _, acceleration_log10_delta_plus_d_log10_delta, _, _, _ = read_for_partials(
+        filename=f"rheology_{satellite}_checkup_log10_delta_plus_" + str(d_parameter),
+        path=Path("."),
     )
-    _, acceleration_tau_m_plus_d_log10_tau_m, _, _ = read_for_partials(
-        filename=f"rheology_{satellite}_checkup_log10_tau_m_plus_" + str(d_parameter) + ".yml"
+    _, acceleration_tau_m_plus_d_log10_tau_m, _, _, _ = read_for_partials(
+        filename=f"rheology_{satellite}_checkup_log10_tau_m_plus_" + str(d_parameter),
+        path=Path("."),
     )
     alpha_finite_difference = (acceleration_alpha_plus_d_alpha - acceleration) / d_parameter
     log10_delta_finite_difference = (
@@ -337,25 +327,27 @@ def compare_acceleration_partials_to_finite_differences(
     ) / d_parameter
 
     axes: Iterable[Iterable[Axes]]
-    fig, axes = subplots(3, 3, figsize=(12, 10), sharex=True)
+    figure, axes = subplots(3, 3, figsize=(12, 10), sharex=True)
 
     for (i, ax_line), component in zip(enumerate(axes), ["X", "Y", "Z"]):
 
-        for ax, parameter in zip(ax_line, ["alpha", "\log_10(\delta)", "\log_10(\tau_m)"]):
+        ax: Axes
+
+        for ax, parameter in zip(ax_line, [r"\alpha", r"\log_{10}(\Delta)", r"\log_{10}(\tau_m)"]):
 
             if "alpha" in parameter:
 
                 ax.scatter(
                     epochs,
                     alpha_formal[:, i],
-                    color="b",
+                    c="b",
                     marker="x",
                     label="formal" if i == 0 else None,
                 )
                 ax.scatter(
                     epochs,
                     alpha_finite_difference[:, i],
-                    color="b",
+                    c="b",
                     marker="o",
                     label="finite differences" if i == 0 else None,
                 )
@@ -365,14 +357,14 @@ def compare_acceleration_partials_to_finite_differences(
                 ax.scatter(
                     epochs,
                     log10_delta_formal[:, i],
-                    color="r",
+                    c="orange",
                     marker="x",
                     label="formal" if i == 0 else None,
                 )
                 ax.scatter(
                     epochs,
                     log10_delta_finite_difference[:, i],
-                    color="r",
+                    c="orange",
                     marker="o",
                     label="finite differences" if i == 0 else None,
                 )
@@ -382,14 +374,14 @@ def compare_acceleration_partials_to_finite_differences(
                 ax.scatter(
                     epochs,
                     log10_tau_m_formal[:, i],
-                    color="r",
+                    c="g",
                     marker="x",
                     label="formal" if i == 0 else None,
                 )
                 ax.scatter(
                     epochs,
                     log10_tau_m_finite_difference[:, i],
-                    color="r",
+                    c="g",
                     marker="o",
                     label="finite differences" if i == 0 else None,
                 )
@@ -399,12 +391,14 @@ def compare_acceleration_partials_to_finite_differences(
                 ax.legend(ncol=2)
                 ax.set_title(r"$\frac{\partial a}{\partial " + parameter + r"}$")
 
-        ax.set_ylabel(f"{component}")
-        ax.grid(True, alpha=0.3)
+            ax.set_ylabel(f"{component}")
+            ax.grid(True, alpha=0.3)
 
-    ax.set_xlabel("JJul")
+            if component == "Z":
 
-    fig.suptitle("Finite difference comparison to formal partials")
+                ax.set_xlabel("JJul")
 
+    figure.suptitle("Finite difference comparison to formal partials " + str(satellite))
     tight_layout()
     show()
+    save_figure(figure=figure, figure_title="Acceleration_partials")

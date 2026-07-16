@@ -2,7 +2,7 @@
 Defines and hard-codes the solid pole tide correction driven by k2 only in GINS routine
 f_marpolsol.f90.
 The generated Fortran tables are gridded in the runtime interpolation variables
-(alpha, log10(delta), log10(tau_m), date).
+(alpha, log10(Delta), log10(tau_m), date).
 """
 
 from multiprocessing import Pool
@@ -423,11 +423,7 @@ def generate_pole_tide_models(
         - pole_tide_correction_models["C"]["elastic"][0]
     )
     pole_tide_correction_models["S"]["elastic"] += (
-        -PHI_CONSTANT
-        * (
-            K_2_IERS.imag * initial_values[0]  # TODO: Change sign?
-            - K_2_IERS.real * initial_values[1]
-        )
+        -PHI_CONSTANT * (K_2_IERS.imag * initial_values[0] + K_2_IERS.real * initial_values[1])
         - pole_tide_correction_models["S"]["elastic"][0]
     )
     pole_tide_correction_models["C"]["IERS"] += (
@@ -435,11 +431,7 @@ def generate_pole_tide_models(
         - pole_tide_correction_models["C"]["IERS"][0]
     )
     pole_tide_correction_models["S"]["IERS"] += (
-        -PHI_CONSTANT
-        * (
-            K_2_IERS.imag * initial_values[0]  # TODO: Change sign?
-            - K_2_IERS.real * initial_values[1]
-        )
+        -PHI_CONSTANT * (K_2_IERS.imag * initial_values[0] + K_2_IERS.real * initial_values[1])
         - pole_tide_correction_models["S"]["IERS"][0]
     )
     grid_indices = list(ndindex(love_numbers.shape[:3]))
@@ -476,10 +468,7 @@ def generate_pole_tide_models(
             )
             pole_tide_correction_models["S"][model_name][idx] = s_model + (
                 -PHI_CONSTANT
-                * (
-                    K_2_IERS.imag * initial_values[0]  # TODO: Change sign?
-                    - K_2_IERS.real * initial_values[1]
-                )
+                * (K_2_IERS.imag * initial_values[0] + K_2_IERS.real * initial_values[1])
                 - s_model[0]
             )
 
@@ -575,8 +564,8 @@ def save_pole_tide_corrections(
     for variable_name, array_to_write in {
         "jjul_dates": model_jjul_dates[model_mask],
         "alpha_values": alpha_values,
-        "log10_delta_values": log10(delta_values),
-        "log10_tau_m_values": log10(1 / omega_m_values),
+        "log10_delta_values": log10_delta_values,
+        "log10_tau_m_values": log10_tau_m_values,
     }.items():
 
         declaration, assignment = hard_code_fortran90(
