@@ -467,16 +467,23 @@ def generate_pole_tide_models(
 
         for idx, (c_model, s_model) in zip(grid_indices, results):
 
-            pole_tide_correction_models["C"][model_name][idx] = c_model + (
-                -PHI_CONSTANT
-                * (K_2_IERS.real * initial_values[0] + K_2_IERS.imag * initial_values[1])
-                - c_model[0]
-            )
-            pole_tide_correction_models["S"][model_name][idx] = s_model + (
-                -PHI_CONSTANT
-                * (K_2_IERS.imag * initial_values[0] + K_2_IERS.real * initial_values[1])
-                - s_model[0]
-            )
+            if model_name == "anelastic":
+
+                pole_tide_correction_models["C"][model_name][idx] = c_model + (
+                    -PHI_CONSTANT
+                    * (K_2_IERS.real * initial_values[0] + K_2_IERS.imag * initial_values[1])
+                    - c_model[0]
+                )
+                pole_tide_correction_models["S"][model_name][idx] = s_model + (
+                    -PHI_CONSTANT
+                    * (K_2_IERS.imag * initial_values[0] + K_2_IERS.real * initial_values[1])
+                    - s_model[0]
+                )
+
+            else:
+
+                pole_tide_correction_models["C"][model_name][idx] = c_model - c_model[0]
+                pole_tide_correction_models["S"][model_name][idx] = s_model - s_model[0]
 
     return n_parameter_values, love_numbers_for_gins_tabs, pole_tide_correction_models
 
