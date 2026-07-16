@@ -26,7 +26,7 @@ from base_models import (
     lagrange_order4,
     save_base_model,
 )
-from numpy import array, asarray, conjugate, log, log10, mean, ndarray, ndindex, unique, zeros
+from numpy import array, asarray, conjugate, flip, log, log10, mean, ndarray, ndindex, unique, zeros
 from scipy.fft import fft, fftfreq, ifft
 from tqdm import tqdm
 
@@ -390,6 +390,12 @@ def generate_pole_tide_models(
         directory=file_path.name,
         love_numbers_for_gins_tabs=love_numbers_for_gins_tabs,
     )
+
+    # For ascending tau_m values.
+    for parameter in love_numbers_partials.keys():
+
+        love_numbers_partials[parameter] = flip(m=love_numbers_partials[parameter], axis=2)
+
     love_number_log_frequencies = log(1 / love_number_periods)  # (yr^-1).
     pole_tide_correction_models: dict[str, dict[str, ndarray]] = {
         component: {
@@ -505,6 +511,12 @@ def generate_solid_tide_models(
         directory=file_path.name,
         love_numbers_for_gins_tabs=love_numbers_for_gins_tabs,
     )
+
+    # For ascending tau_m values.
+    for parameter in love_numbers_partials.keys():
+
+        love_numbers_partials[parameter] = flip(m=love_numbers_partials[parameter], axis=2)
+
     love_number_log_frequencies = log(1 / love_number_periods)  # (yr^-1).
     solid_tide_correction_models: dict[str, ndarray] = {
         model_name: zeros(
@@ -546,7 +558,7 @@ def save_pole_tide_corrections(
 
     alpha_values, delta_values, omega_m_values = tuple(parameter_tabs.values())
     log10_delta_values = log10(delta_values)
-    log10_tau_m_values = log10(1 / omega_m_values)
+    log10_tau_m_values = flip(m=log10(1 / omega_m_values))
     model_jjul_dates = dates_to_jjul_dates(dates=dates)
     model_mask = (model_jjul_dates >= DATA_DATES_LOWER_BOUND - DATA_DATES_MARGIN) & (
         model_jjul_dates <= DATA_DATES_UPPER_BOUND + DATA_DATES_MARGIN
@@ -631,7 +643,7 @@ def save_solid_tide_corrections(
 
     alpha_values, delta_values, omega_m_values = tuple(parameter_tabs.values())
     log10_delta_values = log10(delta_values)
-    log10_tau_m_values = log10(1 / omega_m_values)
+    log10_tau_m_values = flip(log10(1 / omega_m_values))
     solid_tide_doodson_ids = array(
         object=[doodson_id for doodson_id, _ in IERS_LONG_PERIOD_ZONAL_TIDES],
         dtype=int,
