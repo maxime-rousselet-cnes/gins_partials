@@ -396,6 +396,7 @@ def generate_pole_tide_models(
 
         love_numbers_partials[parameter] = flip(m=love_numbers_partials[parameter], axis=2)
 
+    love_numbers = flip(m=love_numbers, axis=2)
     love_number_log_frequencies = log(1 / love_number_periods)  # (yr^-1).
     pole_tide_correction_models: dict[str, dict[str, ndarray]] = {
         component: {
@@ -441,10 +442,16 @@ def generate_pole_tide_models(
         - pole_tide_correction_models["S"]["IERS"][0]
     )
     grid_indices = list(ndindex(love_numbers.shape[:3]))
+
     for model_name, model_grid in tqdm(
         zip(
             ["anelastic", "alpha_partials", "log10_delta_partials", "log10_tau_m_partials"],
-            [love_numbers] + list(love_numbers_partials.values()),
+            [love_numbers]
+            + [
+                love_numbers_partials[r"\alpha^{MANTLE_0}"],
+                love_numbers_partials[r"\log_{10}\Delta^{MANTLE_0}"],
+                love_numbers_partials[r"\log_{10}\tau_{m-inf}^{MANTLE_0}"],
+            ],
         ),
         total=4,
     ):
@@ -497,15 +504,6 @@ def generate_solid_tide_models(
     Build the interpolated k2 to zonal long-period tides.
     """
 
-    n_parameter_values = len(
-        unique(
-            [
-                file.name.split("alpha")[1].split("Delta")[0]
-                for file in file_path.glob("*")
-                if "period" not in file.name
-            ]
-        )
-    )
     (
         love_number_periods,
         elastic,
@@ -524,6 +522,7 @@ def generate_solid_tide_models(
 
         love_numbers_partials[parameter] = flip(m=love_numbers_partials[parameter], axis=2)
 
+    love_numbers = flip(m=love_numbers, axis=2)
     love_number_log_frequencies = log(1 / love_number_periods)  # (yr^-1).
     solid_tide_correction_models: dict[str, ndarray] = {
         model_name: zeros(
@@ -773,7 +772,7 @@ def preprocess_and_save_tide_correction_partials(
     n_parameter_values, tabs, pole_models = generate_pole_tide_models(
         m_complex=m_complex,
         i_signal=(i_signal_start, len(dates)),
-        initial_values=(m_1[0] + mean_m_1, m_2[0] + mean_m_2),
+        initial_values=(m_1[0], m_2[0]),
         frequencies=frequencies,
     )
     solid_models = generate_solid_tide_models(

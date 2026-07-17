@@ -11,7 +11,10 @@ GINS_LISTING_PATH = DATA_PATH.joinpath("listing")
 
 
 def read_for_partials(
-    filename: str, path: Path = GINS_LISTING_PATH
+    filename: str,
+    path: Path = GINS_LISTING_PATH,
+    parameter_index: int = 1,
+    parameter_value: float = 0.25,
 ) -> tuple[ndarray, ndarray, ndarray, ndarray, ndarray]:
     """
     Gets tabs of epochs, accelerations, and parameter partials.
@@ -22,7 +25,7 @@ def read_for_partials(
 
     outputs = {
         "acc": [],
-        "log10_alpha": [],
+        "alpha": [],
         "log10_delta": [],
         "log10_tau_m": [],
     }
@@ -33,6 +36,10 @@ def read_for_partials(
     with open(list(path.glob(filename + "*"))[0], "r", encoding="utf-8") as f:
 
         for line in f:
+
+            if "ER:0" in line:
+
+                break
 
             fields = line.split()
 
@@ -47,6 +54,10 @@ def read_for_partials(
                 epochs.append(float(fields[1]))
                 current_key = None
                 current_values = []
+
+                if parameter_index < 3:
+
+                    assert float(fields[1 + parameter_index]) == parameter_value
 
             elif key in outputs:
 
@@ -66,7 +77,7 @@ def read_for_partials(
     return (
         asarray(epochs),
         asarray(outputs["acc"]),
-        asarray(outputs["log10_alpha"]),
+        asarray(outputs["alpha"]),
         asarray(outputs["log10_delta"]),
         asarray(outputs["log10_tau_m"]),
     )
