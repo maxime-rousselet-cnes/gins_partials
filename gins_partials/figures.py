@@ -297,30 +297,27 @@ def plot_pole_tide_models(
 
 def compare_acceleration_partials_to_finite_differences(
     d_parameter: float = 0.01,
-    satellite: str = "lageos2",
+    satellite: str = "ajisai",
 ) -> None:
     """
     Partial derivatives validation figure for a single arc at a single parameter value.
     """
 
     epochs, acceleration, alpha_formal, log10_delta_formal, log10_tau_m_formal = read_for_partials(
-        filename=f"rheology_{satellite}_checkup.yml", path=Path(".")
+        filename=f"rheology_{satellite}_checkup.yml"
     )
     _, acceleration_alpha_plus_d_alpha, _, _, _ = read_for_partials(
         filename=f"rheology_{satellite}_checkup_alpha_plus_" + str(d_parameter),
-        path=Path("."),
         parameter_index=1,
         parameter_value=0.26,
     )
     _, acceleration_log10_delta_plus_d_log10_delta, _, _, _ = read_for_partials(
         filename=f"rheology_{satellite}_checkup_log10_delta_plus_" + str(d_parameter),
-        path=Path("."),
         parameter_index=2,
         parameter_value=0.01,
     )
     _, acceleration_tau_m_plus_d_log10_tau_m, _, _, _ = read_for_partials(
         filename=f"rheology_{satellite}_checkup_log10_tau_m_plus_" + str(d_parameter),
-        path=Path("."),
         parameter_index=3,
         parameter_value=3.52,
     )

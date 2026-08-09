@@ -5,8 +5,6 @@ Example:
 
     python main_create_constraints_multi_harmonics.py \
         --output constraints_G_trend_and_acceleration_and_annual \
-        --start 19910101 \
-        --end 19910106 \
         --annual \
         --acceleration
 """
@@ -149,13 +147,13 @@ def parameter_names(
 
         if acceleration:
 
-            names.append(f"SAA_{suffix}")
+            names.append(f"PAA_{suffix}")
 
         if annual:
 
-            names.extend([f"SC_{suffix}", f"SS_{suffix}"])
+            names.extend([f"PC_{suffix}", f"PS_{suffix}"])
 
-        names.extend([f"SA_{suffix}", f"SB_{suffix}"])
+        names.extend([f"PA_{suffix}", f"PB_{suffix}"])
 
     else:
 
@@ -260,7 +258,7 @@ def write_parameter_creation_block(
 
             lines.append(
                 f"  0                       {label(name)}"
-                + "                                                = {fortran_sci(0.0)}"
+                + f"                                                = {fortran_sci(0.0)}"
             )
 
 
@@ -300,7 +298,7 @@ def write_constraint_block(
                 order=kind_degree_order[2],
                 date_time=date_time,
             )
-            + f"{fortran_sci(value=param_coeffs[0])} {label(text=first_param_name)} "
+            + f" {fortran_sci(value=param_coeffs[0])} {label(text=first_param_name)} "
             f"= {fortran_sci(value=0.0)} {sigma}"
         )
         remaining = list(zip(param_coeffs[1:], param_names[1:]))
@@ -325,7 +323,7 @@ def generate_file(
     """
 
     dates = list(iter_dates(start=START_DATE, end=END_DATE))
-    lines: list[str] = ["\n"] * 2
+    lines: list[str] = ["\n"]
     write_parameter_creation_block(
         lines=lines, coeffs=coeffs, annual=options[0], acceleration=options[1]
     )
@@ -342,7 +340,10 @@ def generate_file(
             sigma=sigma,
         )
 
-    output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    Path("G_constraints").mkdir(parents=True, exist_ok=True)
+    Path("G_constraints").joinpath(output).write_text(
+        "\n" + "\n".join(lines) + "\n", encoding="utf-8"
+    )
 
 
 def parse_coeff(value: str) -> tuple[str, int, int]:
