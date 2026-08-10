@@ -8,7 +8,7 @@ from re import compile, fullmatch
 
 import matplotlib.dates as mdates
 from matplotlib.pyplot import close, subplots
-from numpy import ones, quantile
+from numpy import array, ones, quantile
 
 FLOAT_REGEX = compile(r"[+-]?\d+\.\d+E[+-]\d+|[+-]?\.\d+E[+-]\d+")
 
@@ -270,7 +270,7 @@ def produce_uncrossed_figures(root: Path, file: Path, output_root: Path) -> None
                     (
                         0
                         if (parameter_type, degree, order, date, None) not in formal_uncertainties
-                        else abs(formal_uncertainties[(parameter_type, degree, order, date, None)])
+                        else formal_uncertainties[(parameter_type, degree, order, date, None)]
                     )
                     for date in dates
                 ]
@@ -278,8 +278,9 @@ def produce_uncrossed_figures(root: Path, file: Path, output_root: Path) -> None
                 ax.errorbar(
                     dates,
                     values,
-                    yerr=sigmas,
+                    yerr=abs(sigmas),
                     fmt="o-",
+                    color="b" if array(object=sigmas > 0, dtype=bool).all() else "r",
                     capsize=3,
                     lw=1,
                 )
