@@ -267,14 +267,18 @@ def produce_uncrossed_figures(root: Path, file: Path, output_root: Path) -> None
                 ]
                 dates.sort()
                 values = [solutions[(parameter_type, degree, order, date, None)] for date in dates]
-                sigmas = [
-                    (
-                        0
-                        if (parameter_type, degree, order, date, None) not in formal_uncertainties
-                        else formal_uncertainties[(parameter_type, degree, order, date, None)]
-                    )
-                    for date in dates
-                ]
+                sigmas = array(
+                    object=[
+                        (
+                            0
+                            if (parameter_type, degree, order, date, None)
+                            not in formal_uncertainties
+                            else formal_uncertainties[(parameter_type, degree, order, date, None)]
+                        )
+                        for date in dates
+                    ],
+                    dtype=float,
+                )
                 figure, ax = subplots(figsize=(8, 4))
                 ax.errorbar(
                     dates,
