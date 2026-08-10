@@ -5,6 +5,7 @@ from enum import Enum, auto
 from os import listdir
 from pathlib import Path
 from re import compile, fullmatch
+from sys import argv
 
 import matplotlib.dates as mdates
 from matplotlib.pyplot import close, subplots
@@ -336,4 +337,4 @@ def plot_solutions(
 
 if __name__ == "__main__":
 
-    plot_solutions()
+    plot_solutions(root=Path(argv[1]))
