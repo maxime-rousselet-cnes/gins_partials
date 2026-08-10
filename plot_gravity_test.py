@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum, auto
+from os import listdir
 from pathlib import Path
 from re import compile, fullmatch
 
@@ -239,8 +240,13 @@ def produce_uncrossed_figures(root: Path, file: Path, output_root: Path) -> None
     Produces uncrossed solution figures for a given solution file.
     """
 
-    solutions, formal_uncertainties, correlations = ingest_dynamo_d_solution(file=file)
     file_path_to_save = create_parallel_path(root=root, file=file, output_root=output_root)
+
+    if listdir(file_path_to_save):
+
+        return
+
+    solutions, formal_uncertainties, correlations = ingest_dynamo_d_solution(file=file)
 
     for degree in [2, 4, 6]:
 
@@ -312,7 +318,7 @@ def plot_solutions(
 
                         if sub.is_file():
 
-                            pass  # produce_uncrossed_figures(root=root, file=sub, output_root=output_root)
+                            produce_uncrossed_figures(root=root, file=sub, output_root=output_root)
 
                         if not fix_g:
 
