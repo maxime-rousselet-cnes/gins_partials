@@ -350,6 +350,18 @@ def plot_solutions(
                     ],
                 ] = {}
 
+                test_path = (
+                    output_root.joinpath(alpha_subdirectory.name)
+                    .joinpath(delta_subdirectory.name)
+                    .joinpath(tau_m_subdirectory.name)
+                )
+
+                if test_path.exists():
+
+                    if len(list(test_path.glob("*.pdf"))) > 0:
+
+                        continue
+
                 for g_subdirectory in tau_m_subdirectory.iterdir():
 
                     fix_g = g_subdirectory.name.split("_")[-1] == "true"
