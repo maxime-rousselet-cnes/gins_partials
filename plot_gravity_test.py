@@ -195,7 +195,7 @@ def ingest_dynamo_d_solution(
 
         if parameter_i[3] is None:
 
-            sum_squares = {
+            sum_abs = {
                 parameter_type: {d_o: 0.0 for d_o in [(2, 0), (2, 1), (4, 0), (4, 1), (6, 0)]}
                 for parameter_type in [ParameterType.C, ParameterType.S]
             }
@@ -217,14 +217,14 @@ def ingest_dynamo_d_solution(
 
                 else:
 
-                    sum_squares[parameter_j[0]][(parameter_j[1], parameter_j[2])] += correlation**2
+                    sum_abs[parameter_j[0]][(parameter_j[1], parameter_j[2])] += abs(correlation)
 
-            for parameter_type, degree_order_squares in sum_squares.items():
+            for parameter_type, degree_order_abs in sum_abs.items():
 
-                for (degree, order), square in degree_order_squares.items():
+                for (degree, order), abs_value in degree_order_abs.items():
 
                     correlations[(parameter_i, (parameter_type, degree, order, None, None))] = (
-                        square**0.5
+                        abs_value / (n_c if parameter_type == ParameterType.C else n_s)
                     )
                     correlations[((parameter_type, degree, order, None, None), parameter_i)] = (
                         correlations[(parameter_i, (parameter_type, degree, order, None, None))]
@@ -412,7 +412,7 @@ def format_parameter(parameter: Parameter) -> Optional[str]:
 
     if mode is None:
 
-        return type_letter + str(degree) + str(order) + "}$ (epochs RMS)"
+        return type_letter + str(degree) + str(order) + "}$ (epochs AM)"
 
     return type_letter + str(degree) + str(order) + "}^{" + MODE_LETTERS[mode] + "}$"
 
@@ -617,7 +617,9 @@ def plot_comparative(
 
             for i_parameter, parameter in enumerate(parameters):
 
-                if parameter in by_column[column_g_model][0]:
+                if parameter in by_column[column_g_model][0] or (
+                    parameter[2] is not None and parameter[4] is None
+                ):
 
                     if parameter != LAM_KEY and LAM_KEY in parameters:
 
@@ -824,7 +826,9 @@ def plot_comparative(
 
             for i_column_g_model, column_g_model in enumerate(columns):
 
-                if parameter in by_column[column_g_model][0]:
+                if parameter in by_column[column_g_model][0] or (
+                    parameter[2] is not None and parameter[4] is None and column_g_model != "fix_g"
+                ):
 
                     if len(parameters_subset) > 1:
 
