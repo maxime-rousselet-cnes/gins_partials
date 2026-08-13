@@ -14,6 +14,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.pyplot import close, figure, setp, subplots, tight_layout
 from numpy import arange, array, ndarray, ones, quantile, zeros
 
+CHECKPOINT_TUPLES = []
 FLOAT_REGEX = compile(r"[+-]?\d+\.\d+E[+-]\d+|[+-]?\.\d+E[+-]\d+")
 
 
@@ -337,6 +338,16 @@ def plot_solutions(
 
             for tau_m_subdirectory in delta_subdirectory.iterdir():
 
+                checkpoint_tuple = (
+                    bool(alpha_subdirectory.name.split("_")[-1].capitalize()),
+                    bool(delta_subdirectory.name.split("_")[-1].capitalize()),
+                    bool(tau_m_subdirectory.name.split("_")[-1].capitalize()),
+                )
+
+                if checkpoint_tuple in CHECKPOINT_TUPLES:
+
+                    continue
+
                 t_1 = time()
                 gathered: dict[
                     str,
@@ -349,18 +360,6 @@ def plot_solutions(
                         ],
                     ],
                 ] = {}
-
-                test_path = (
-                    output_root.joinpath(alpha_subdirectory.name)
-                    .joinpath(delta_subdirectory.name)
-                    .joinpath(tau_m_subdirectory.name)
-                )
-
-                if test_path.exists():
-
-                    if len(list(test_path.glob("*.pdf"))) > 0:
-
-                        continue
 
                 for g_subdirectory in tau_m_subdirectory.iterdir():
 
