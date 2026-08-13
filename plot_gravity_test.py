@@ -286,7 +286,7 @@ def produce_uncrossed_figures(
                     ],
                     dtype=float,
                 )
-                figure, ax = subplots(figsize=(8, 4))
+                figure, ax = subplots(figsize=(14, 4))
                 ax.errorbar(
                     dates,
                     values,
@@ -297,7 +297,8 @@ def produce_uncrossed_figures(
                     lw=1,
                 )
                 q1, q2, q3 = quantile(values, [0.25, 0.50, 0.75])
-                ax.set_ylim(q1 - 3 * (q2 - q1), q3 + 3 * (q3 - q2))
+                _, _, q3_sigma = quantile(abs(sigmas), [0.25, 0.50, 0.75])
+                ax.set_ylim(q1 - 2 * (q2 - q1 - q3_sigma), q3 + 2 * (q3 + q3_sigma - q2))
                 coeff = (
                     (r"$C_{" if parameter_type == ParameterType.C else r"$S_{")
                     + str(degree)
