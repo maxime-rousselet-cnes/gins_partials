@@ -326,7 +326,7 @@ def plot_solutions(
     Iterates on all solutions of the root directory and produces uncrossed solution figures.
     """
 
-    if output_root.exists():
+    if output_root.exists() and not CHECKPOINT_TUPLES:
 
         rmtree(output_root)
 
