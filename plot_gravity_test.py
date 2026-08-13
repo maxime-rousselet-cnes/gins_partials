@@ -644,7 +644,7 @@ def plot_comparative(
             format_parameter(parameter=parameter) for parameter in parameters_subset
         ]
         column_labels = [format_column_labels(column=column) for column in columns]
-        fig = figure(figsize=(20, 20))
+        fig = figure(figsize=(22, 25))
         grid = GridSpec(nrows=2, ncols=6, figure=fig)
 
         ax_solutions = fig.add_subplot(grid[0, 0:3])
