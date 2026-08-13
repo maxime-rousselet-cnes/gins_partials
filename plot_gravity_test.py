@@ -2,14 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum, auto
-from os import listdir
 from pathlib import Path
 from re import compile, fullmatch
+from shutil import rmtree
 from sys import argv
+from time import time
+from typing import Optional
 
 import matplotlib.dates as mdates
-from matplotlib.pyplot import close, subplots
-from numpy import array, ones, quantile
+from matplotlib.gridspec import GridSpec
+from matplotlib.pyplot import close, figure, setp, subplots, tight_layout
+from numpy import arange, array, ndarray, ones, quantile, zeros
 
 FLOAT_REGEX = compile(r"[+-]?\d+\.\d+E[+-]\d+|[+-]?\.\d+E[+-]\d+")
 
@@ -31,11 +34,11 @@ class ParameterMode(Enum):
     Time-dependent base components for gravity field modeling.
     """
 
-    TREND = auto()
-    BIAS = auto()
     ACC = auto()
+    TREND = auto()
     COS = auto()
     SIN = auto()
+    BIAS = auto()
 
 
 TYPE_MAP = {
@@ -43,11 +46,21 @@ TYPE_MAP = {
     "P": ParameterType.S,
 }
 MODE_MAP = {
-    "A": ParameterMode.TREND,
-    "B": ParameterMode.BIAS,
     "AA": ParameterMode.ACC,
+    "A": ParameterMode.TREND,
     "C": ParameterMode.COS,
     "S": ParameterMode.SIN,
+    "B": ParameterMode.BIAS,
+}
+LAM_KEY: Parameter = (ParameterType.LAM, None, None, None, None)
+LDM_KEY: Parameter = (ParameterType.LDM, None, None, None, None)
+LTM_KEY: Parameter = (ParameterType.LTM, None, None, None, None)
+MODE_LETTERS = {
+    ParameterMode.ACC: "AA",
+    ParameterMode.TREND: "A",
+    ParameterMode.COS: "C",
+    ParameterMode.SIN: "S",
+    ParameterMode.BIAS: "B",
 }
 
 Parameter = tuple[ParameterType, int | None, int | None, datetime | None, ParameterMode | None]
@@ -90,15 +103,7 @@ def parse_parameter_name(
             MODE_MAP[suffix],
         )
 
-    return (
-        (ParameterType.LAM, None, None, None, None)
-        if name == "LAM"
-        else (
-            (ParameterType.LDM, None, None, None, None)
-            if name == "LDM"
-            else (ParameterType.LTM, None, None, None, None)
-        )
-    )
+    return LAM_KEY if name == "LAM" else (LDM_KEY if name == "LDM" else LTM_KEY)
 
 
 def ingest_dynamo_d_solution(
@@ -221,6 +226,9 @@ def ingest_dynamo_d_solution(
                     correlations[(parameter_i, (parameter_type, degree, order, None, None))] = (
                         square**0.5
                     )
+                    correlations[((parameter_type, degree, order, None, None), parameter_i)] = (
+                        correlations[(parameter_i, (parameter_type, degree, order, None, None))]
+                    )
 
     return solutions, formal_uncertainties, correlations
 
@@ -236,17 +244,16 @@ def create_parallel_path(root: Path, file: Path, output_root: Path) -> Path:
     return output_path
 
 
-def produce_uncrossed_figures(root: Path, file: Path, output_root: Path) -> None:
+def produce_uncrossed_figures(
+    root: Path, file: Path, output_root: Path
+) -> tuple[
+    dict[Parameter, float], dict[Parameter, float], dict[tuple[Parameter, Parameter], float]
+]:
     """
     Produces uncrossed solution figures for a given solution file.
     """
 
     file_path_to_save = create_parallel_path(root=root, file=file, output_root=output_root)
-
-    if listdir(file_path_to_save):
-
-        return
-
     solutions, formal_uncertainties, correlations = ingest_dynamo_d_solution(file=file)
 
     for degree in [2, 4, 6]:
@@ -290,8 +297,13 @@ def produce_uncrossed_figures(root: Path, file: Path, output_root: Path) -> None
                     lw=1,
                 )
                 q1, q2, q3 = quantile(values, [0.25, 0.50, 0.75])
-                ax.set_ylim(q1 - 2 * (q2 - q1), q3 + 2 * (q3 - q2))
-                coeff = f"{'C' if parameter_type == ParameterType.C else 'S'}_{degree}{order}"
+                ax.set_ylim(q1 - 3 * (q2 - q1), q3 + 3 * (q3 - q2))
+                coeff = (
+                    (r"$C_{" if parameter_type == ParameterType.C else r"$S_{")
+                    + str(degree)
+                    + str(order)
+                    + "}$"
+                )
                 ax.set_title(coeff)
                 ax.set_xlabel("Date")
                 ax.set_ylabel("Solution")
@@ -299,8 +311,10 @@ def produce_uncrossed_figures(root: Path, file: Path, output_root: Path) -> None
                 ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
                 figure.autofmt_xdate()
                 figure.tight_layout()
-                figure.savefig(str(file_path_to_save / coeff) + ".pdf")
+                figure.savefig(str(file_path_to_save / coeff[1:-1]) + ".pdf")
                 close(figure)
+
+    return solutions, formal_uncertainties, correlations
 
 
 def plot_solutions(
@@ -310,11 +324,30 @@ def plot_solutions(
     Iterates on all solutions of the root directory and produces uncrossed solution figures.
     """
 
+    if output_root.exists():
+
+        rmtree(output_root)
+
+    t_0 = time()
+
     for alpha_subdirectory in root.iterdir():
 
         for delta_subdirectory in alpha_subdirectory.iterdir():
 
             for tau_m_subdirectory in delta_subdirectory.iterdir():
+
+                t_1 = time()
+                gathered: dict[
+                    str,
+                    dict[
+                        str,
+                        tuple[
+                            dict[Parameter, float],
+                            dict[Parameter, float],
+                            dict[tuple[Parameter, Parameter], float],
+                        ],
+                    ],
+                ] = {}
 
                 for g_subdirectory in tau_m_subdirectory.iterdir():
 
@@ -324,7 +357,11 @@ def plot_solutions(
 
                         if sub.is_file():
 
-                            produce_uncrossed_figures(root=root, file=sub, output_root=output_root)
+                            gathered.setdefault(sub.stem, {})[
+                                "fix_g" if fix_g else "no_g_model"
+                            ] = produce_uncrossed_figures(
+                                root=root, file=sub, output_root=output_root
+                            )
 
                         if not fix_g:
 
@@ -334,11 +371,522 @@ def plot_solutions(
 
                                     for file in g_model_subdirectory.iterdir():
 
-                                        produce_uncrossed_figures(
+                                        gathered.setdefault(file.stem, {})[
+                                            sub.name + "/" + g_model_subdirectory.name
+                                        ] = produce_uncrossed_figures(
                                             root=root, file=file, output_root=output_root
                                         )
+
+                if gathered:
+
+                    file_path_to_save = create_parallel_path(
+                        root=root, file=tau_m_subdirectory, output_root=output_root
+                    )
+                    plot_comparative(gathered=gathered, output_path=file_path_to_save)
+
+                print(tau_m_subdirectory, time() - t_1)
+
+    print("Total post-process time:", time() - t_0)
+
+
+def format_parameter(parameter: Parameter) -> Optional[str]:
+    """
+    Builds a short, human readable label for a parameter tuple.
+    """
+
+    p_type, degree, order, date, mode = parameter
+
+    if p_type in (ParameterType.LAM, ParameterType.LDM, ParameterType.LTM):
+
+        return (
+            r"$\alpha$"
+            if p_type == ParameterType.LAM
+            else (r"$\log_{10} \Delta$" if p_type == ParameterType.LDM else r"$\log_{10} \tau_m$")
+        )
+
+    type_letter = "$C_{" if p_type == ParameterType.C else "$S_{"
+
+    if date is not None:
+
+        return None
+
+    if mode is None:
+
+        return type_letter + str(degree) + str(order) + "}$ (epochs RMS)"
+
+    return type_letter + str(degree) + str(order) + "}^{" + MODE_LETTERS[mode] + "}$"
+
+
+def format_column_labels(column: str) -> str:
+    """
+    Builds a short, human readable label for a gravity field model depending on modes and sigma.
+    """
+
+    if column == "fix_g":
+
+        return "Unadjusted Gravity field"
+
+    if column == "no_g_model":
+
+        return "Adjusted unmodeled Gravity field"
+
+    sigma_exponent = column.split("E")[1].split("/")[0]
+    modes = column.split("_G_")[1].replace("and_", "").split("_")
+
+    return (
+        r"$\sigma_G = 10^{"
+        + str(sigma_exponent)
+        + "}$: "
+        + " & ".join([mode[:3] for mode in modes])
+    )
+
+
+def order_columns(labels: list[str]) -> list[str]:
+    """
+    Orders comparative columns: fix_g case first, then no g model case, then g models by sigma
+    value, then by mode.
+    """
+
+    priority = {"fix_g": 0, "no_g_model": 1}
+
+    return sorted(
+        labels,
+        key=lambda label: (priority.get(label, 2), label.split("/")[0], label.split("/")[-1]),
+    )
+
+
+def order_parameters(parameters: list[Parameter]) -> list[Parameter]:
+    """
+    Orders parameters: Rheological parameters first, then per spherical harmonic, then per mode.
+    """
+
+    priority = {ParameterType.LAM: 0, ParameterType.LDM: 1, ParameterType.LTM: 2}
+
+    return sorted(
+        parameters,
+        key=lambda parameter: (
+            priority.get(parameter[0], 3),
+            parameter[1],
+            parameter[2],
+            parameter[0].value,
+            0 if parameter[4] is None else parameter[4].value,
+        ),
+    )
+
+
+def normalize_solution(tab: ndarray) -> ndarray:
+    """
+    Normalizes every line between 0 and 1 using its maximal value and its minimal value.
+    """
+
+    output = zeros(shape=tab.shape)
+
+    for i_line, line in enumerate(tab):
+
+        non_null_line = [element for element in line if element != 0]
+        min_line = min(non_null_line)
+        max_line = max(non_null_line)
+
+        for j_column, value in enumerate(line):
+
+            output[i_line, j_column] = (
+                -1
+                if tab[i_line, j_column] == 0
+                else (value - min_line) / (max_line - min_line + 1e-15)
+            )
+
+    return output
+
+
+def normalize_uncertainty(solution_heatmap: ndarray, uncertainty_heatmap: ndarray) -> ndarray:
+    """
+    Normalizes uncertainties with respect to the solution they refer to.
+    """
+
+    output = zeros(shape=solution_heatmap.shape)
+
+    for i_line, (solution_line, uncertainty_line) in enumerate(
+        zip(solution_heatmap, uncertainty_heatmap)
+    ):
+
+        for j_column, (solution, uncertainty) in enumerate(zip(solution_line, uncertainty_line)):
+
+            output[i_line, j_column] = abs(uncertainty) / (abs(solution) + 1e-15)
+
+    return output
+
+
+def plot_comparative(
+    gathered: dict[
+        str,
+        dict[
+            str,
+            tuple[
+                dict[Parameter, float],
+                dict[Parameter, float],
+                dict[tuple[Parameter, Parameter], float],
+            ],
+        ],
+    ],
+    output_path: Path,
+) -> None:
+    """
+    Comparative plot of solutions (upper left panel), uncertainty (upper right panel), correlations
+    with alpha (lower left panel), correlations with delta (lower middle panel) and correlations
+    with tau_m (lower right panel). Produces one figure per filename i.e. one figure per satellite
+    combination and per tide mode.
+    """
+
+    by_column: dict[str, tuple[dict, dict, dict]]
+
+    for filename, by_column in gathered.items():
+
+        ordered_columns = order_columns(labels=list(by_column.keys()))
+        parameter_set = set(
+            sum(
+                [
+                    [
+                        (parameter_type, degree, order, date, mode)
+                        for (parameter_type, degree, order, date, mode), _ in by_column[
+                            column_g_model
+                        ][2].keys()
+                        if date is None
+                    ]
+                    for column_g_model in ordered_columns
+                ],
+                start=[],
+            )
+        )
+        parameters = []
+        columns = ordered_columns[:2]
+
+        for parameter_type, degree, order, date, mode in parameter_set:
+
+            if not (
+                ("pole_tide" in filename and order == 0)
+                or ("solid_tide" in filename and order == 1)
+            ):
+
+                parameters += [(parameter_type, degree, order, date, mode)]
+
+        parameters = order_parameters(parameters=parameters)
+        parameters_subset = [
+            (parameter_type, degree, order, date, mode)
+            for parameter_type, degree, order, date, mode in parameters
+            if not (order is not None and mode is None)
+        ]
+
+        for column in ordered_columns[2:]:
+
+            if (
+                len(
+                    [
+                        parameter
+                        for parameter in parameters_subset
+                        if parameter in by_column[column][0]
+                    ]
+                )
+                > 3
+            ):
+
+                columns += [column]
+
+        # Uninformative case.
+        if len(parameters_subset) == 0 or (len(parameters_subset) == 2 and len(columns) == 2):
+
+            continue
+
+        solution_heatmap = zeros(shape=(len(parameters_subset), len(columns)))
+        uncertainty_heatmap = zeros(shape=(len(parameters_subset), len(columns)))
+        alpha_correlation_heatmap = zeros(shape=(len(parameters), len(columns)))
+        delta_correlation_heatmap = zeros(shape=(len(parameters), len(columns)))
+        tau_m_correlation_heatmap = zeros(shape=(len(parameters), len(columns)))
+
+        for i_column_g_model, column_g_model in enumerate(columns):
+
+            for i_parameter, parameter in enumerate(parameters_subset):
+
+                if parameter in by_column[column_g_model][0]:
+
+                    solution_heatmap[i_parameter, i_column_g_model] = by_column[column_g_model][0][
+                        parameter
+                    ]
+                    uncertainty_heatmap[i_parameter, i_column_g_model] = by_column[column_g_model][
+                        1
+                    ][parameter]
+
+            for i_parameter, parameter in enumerate(parameters):
+
+                if parameter in by_column[column_g_model][0]:
+
+                    if parameter != LAM_KEY and LAM_KEY in parameters:
+
+                        alpha_correlation_heatmap[i_parameter, i_column_g_model] = by_column[
+                            column_g_model
+                        ][2][(LAM_KEY, parameter)]
+
+                    if parameter != LDM_KEY and LDM_KEY in parameters:
+
+                        delta_correlation_heatmap[i_parameter, i_column_g_model] = by_column[
+                            column_g_model
+                        ][2][(LDM_KEY, parameter)]
+
+                    if parameter != LTM_KEY and LTM_KEY in parameters:
+
+                        tau_m_correlation_heatmap[i_parameter, i_column_g_model] = by_column[
+                            column_g_model
+                        ][2][(LTM_KEY, parameter)]
+
+        parameter_labels = [format_parameter(parameter=parameter) for parameter in parameters]
+        parameter_subset_labels = [
+            format_parameter(parameter=parameter) for parameter in parameters_subset
+        ]
+        column_labels = [format_column_labels(column=column) for column in columns]
+        fig = figure(figsize=(20, 20))
+        grid = GridSpec(nrows=2, ncols=6, figure=fig)
+
+        ax_solutions = fig.add_subplot(grid[0, 0:3])
+        ax_solutions.set_title("A. Solution", fontweight="bold")
+        im_solution = ax_solutions.imshow(
+            normalize_solution(tab=solution_heatmap), aspect="auto", cmap="copper", vmin=-1, vmax=1
+        )
+        ax_solutions.set_xticks(ticks=range(len(columns)), labels=column_labels)
+        ax_solutions.set_yticks(ticks=range(len(parameters_subset)), labels=parameter_subset_labels)
+        ax_solutions.tick_params(axis="x", labelrotation=-90)
+        ax_solutions.set_xticks(arange(-0.5, solution_heatmap.shape[1], 1), minor=True)
+        ax_solutions.set_yticks(arange(-0.5, solution_heatmap.shape[0], 1), minor=True)
+        ax_solutions.grid(which="minor", color="gray", linestyle="-", linewidth=0.5)
+        ax_solutions.tick_params(which="minor", bottom=False, left=False)
+        cbar_solutions = ax_solutions.figure.colorbar(im_solution, ax=ax_solutions)
+        cbar_solutions.set_ticks([-1, 0, 1.0])
+        cbar_solutions.set_label(r"Adjusted value", rotation=-90, ha="center")
+        cbar_solutions.set_ticklabels(["Not", "Lowest", "Highest"])
+        setp(cbar_solutions.ax.get_xticklabels(), rotation=-90, ha="center")
+
+        ax_uncertainty = fig.add_subplot(grid[0, 3:6])
+        ax_uncertainty.set_title("B. Formal Uncertainty", fontweight="bold")
+        im_uncertainty = ax_uncertainty.imshow(
+            normalize_uncertainty(
+                solution_heatmap=solution_heatmap, uncertainty_heatmap=uncertainty_heatmap
+            ),
+            aspect="auto",
+            cmap="Reds",
+            vmin=0,
+            vmax=1,
+        )
+        ax_uncertainty.set_xticks(ticks=range(len(columns)), labels=column_labels)
+        ax_uncertainty.set_yticks(
+            ticks=range(len(parameters_subset)), labels=parameter_subset_labels
+        )
+        ax_uncertainty.tick_params(axis="x", labelrotation=-90)
+        ax_uncertainty.set_xticks(arange(-0.5, uncertainty_heatmap.shape[1], 1), minor=True)
+        ax_uncertainty.set_yticks(arange(-0.5, uncertainty_heatmap.shape[0], 1), minor=True)
+        ax_uncertainty.grid(which="minor", color="gray", linestyle="-", linewidth=0.5)
+        ax_uncertainty.tick_params(which="minor", bottom=False, left=False)
+        cbar_uncertainties = ax_uncertainty.figure.colorbar(im_uncertainty, ax=ax_uncertainty)
+        cbar_uncertainties.set_ticks([0, 1.0])
+        cbar_uncertainties.set_label(
+            r"Uncertainty normalized by solution value $\frac{\sigma_p}{|p|}$",
+            rotation=-90,
+            ha="center",
+        )
+        cbar_uncertainties.set_ticklabels(["0", "1"])
+        setp(cbar_uncertainties.ax.get_xticklabels(), rotation=-90, ha="center")
+
+        if len(parameters_subset) > 1:
+
+            if LAM_KEY in parameters:
+
+                ax_lam = fig.add_subplot(
+                    grid[1, 0:2]
+                    if LDM_KEY in parameters and LTM_KEY in parameters
+                    else (
+                        grid[1, 0:3]
+                        if LDM_KEY in parameters or LTM_KEY in parameters
+                        else grid[1, 0:6]
+                    )
+                )
+                ax_lam.set_title(r"C. Correlations with $\alpha$", fontweight="bold")
+                im_lam = ax_lam.imshow(
+                    alpha_correlation_heatmap, aspect="auto", cmap="RdBu", vmin=-1, vmax=1
+                )
+                ax_lam.set_xticks(ticks=range(len(columns)), labels=column_labels)
+                ax_lam.set_yticks(ticks=range(len(parameters)), labels=parameter_labels)
+                ax_lam.tick_params(axis="x", labelrotation=-90)
+                ax_lam.set_xticks(arange(-0.5, alpha_correlation_heatmap.shape[1], 1), minor=True)
+                ax_lam.set_yticks(arange(-0.5, alpha_correlation_heatmap.shape[0], 1), minor=True)
+                ax_lam.grid(which="minor", color="gray", linestyle="-", linewidth=0.5)
+                ax_lam.tick_params(which="minor", bottom=False, left=False)
+                cbar_lam = ax_lam.figure.colorbar(im_lam, ax=ax_lam)
+                cbar_lam.set_ticks([-1.0, 0, 1.0])
+                cbar_lam.set_label(r"Correlation", rotation=-90, ha="center")
+                cbar_lam.set_ticklabels(["-1", "0", "1"])
+                setp(cbar_lam.ax.get_xticklabels(), rotation=-90, ha="center")
+
+            if LDM_KEY in parameters:
+
+                ax_ldm = fig.add_subplot(
+                    grid[1, 2:4]
+                    if LAM_KEY in parameters and LTM_KEY in parameters
+                    else (
+                        grid[1, 0:3]
+                        if LTM_KEY in parameters
+                        else (grid[1, 3:6] if LAM_KEY in parameters else grid[1, 0:6])
+                    )
+                )
+                ax_ldm.set_title(r"D. Correlations with $\log_{10} \Delta$", fontweight="bold")
+                im_ldm = ax_ldm.imshow(
+                    delta_correlation_heatmap, aspect="auto", cmap="RdBu", vmin=-1, vmax=1
+                )
+                ax_ldm.set_xticks(ticks=range(len(columns)), labels=column_labels)
+                ax_ldm.set_yticks(ticks=range(len(parameters)), labels=parameter_labels)
+                ax_ldm.tick_params(axis="x", labelrotation=-90)
+                ax_ldm.set_xticks(arange(-0.5, delta_correlation_heatmap.shape[1], 1), minor=True)
+                ax_ldm.set_yticks(arange(-0.5, delta_correlation_heatmap.shape[0], 1), minor=True)
+                ax_ldm.grid(which="minor", color="gray", linestyle="-", linewidth=0.5)
+                ax_ldm.tick_params(which="minor", bottom=False, left=False)
+                cbar_ldm = ax_ldm.figure.colorbar(im_ldm, ax=ax_ldm)
+                cbar_ldm.set_ticks([-1.0, 0, 1.0])
+                cbar_ldm.set_label(r"Correlation", rotation=-90, ha="center")
+                cbar_ldm.set_ticklabels(["-1", "0", "1"])
+                setp(cbar_ldm.ax.get_xticklabels(), rotation=-90, ha="center")
+
+            if LTM_KEY in parameters:
+
+                ax_ltm = fig.add_subplot(
+                    grid[1, 4:6]
+                    if LDM_KEY in parameters and LAM_KEY in parameters
+                    else (
+                        grid[1, 3:6]
+                        if LDM_KEY in parameters or LAM_KEY in parameters
+                        else grid[1, 0:6]
+                    )
+                )
+                ax_ltm.set_title(r"E. Correlations with $\log_{10} \tau_m$", fontweight="bold")
+                im_ltm = ax_ltm.imshow(
+                    tau_m_correlation_heatmap, aspect="auto", cmap="RdBu", vmin=-1, vmax=1
+                )
+                ax_ltm.set_xticks(ticks=range(len(columns)), labels=column_labels)
+                ax_ltm.set_yticks(ticks=range(len(parameters)), labels=parameter_labels)
+                ax_ltm.tick_params(axis="x", labelrotation=-90)
+                ax_ltm.set_xticks(arange(-0.5, delta_correlation_heatmap.shape[1], 1), minor=True)
+                ax_ltm.set_yticks(arange(-0.5, delta_correlation_heatmap.shape[0], 1), minor=True)
+                ax_ltm.grid(which="minor", color="gray", linestyle="-", linewidth=0.5)
+                ax_ltm.tick_params(which="minor", bottom=False, left=False)
+                cbar_ltm = ax_ltm.figure.colorbar(im_ltm, ax=ax_ltm)
+                cbar_ltm.set_ticks([-1.0, 0, 1.0])
+                cbar_ltm.set_label(r"Correlation", rotation=-90, ha="center")
+                cbar_ltm.set_ticklabels(["-1", "0", "1"])
+                setp(cbar_ltm.ax.get_xticklabels(), rotation=-90, ha="center")
+
+        has_negative_uncertainties = zeros(shape=(len(columns)), dtype=bool)
+
+        for i_parameter, parameter in enumerate(parameters_subset):
+
+            for i_column_g_model, column_g_model in enumerate(columns):
+
+                if parameter in by_column[column_g_model][0]:
+
+                    ax_solutions.text(
+                        i_column_g_model,
+                        i_parameter,
+                        f"{solution_heatmap[i_parameter, i_column_g_model]:.2g}",
+                        ha="center",
+                        va="center",
+                        color="black",
+                    )
+                    ax_uncertainty.text(
+                        i_column_g_model,
+                        i_parameter,
+                        f"{uncertainty_heatmap[i_parameter, i_column_g_model]:.2g}",
+                        ha="center",
+                        va="center",
+                        color=(
+                            (
+                                "black"
+                                if uncertainty_heatmap[i_parameter, i_column_g_model]
+                                < 0.7 * abs(solution_heatmap[i_parameter, i_column_g_model])
+                                else "white"
+                            )
+                            if uncertainty_heatmap[i_parameter, i_column_g_model] > 0
+                            else "r"
+                        ),
+                    )
+
+                    if uncertainty_heatmap[i_parameter, i_column_g_model] < 0 or column_g_model in [
+                        "fix_g",
+                        "no_g_model",
+                    ]:
+
+                        has_negative_uncertainties[i_column_g_model] = True
+
+        for i_parameter, parameter in enumerate(parameters):
+
+            for i_column_g_model, column_g_model in enumerate(columns):
+
+                if parameter in by_column[column_g_model][0]:
+
+                    if len(parameters_subset) > 1:
+
+                        if parameter != LAM_KEY and LAM_KEY in parameters:
+
+                            ax_lam.text(
+                                i_column_g_model,
+                                i_parameter,
+                                f"{alpha_correlation_heatmap[i_parameter, i_column_g_model]:.2g}",
+                                ha="center",
+                                va="center",
+                                color=(
+                                    "black"
+                                    if abs(alpha_correlation_heatmap[i_parameter, i_column_g_model])
+                                    < 0.8
+                                    else "white"
+                                ),
+                            )
+
+                        if parameter != LDM_KEY and LDM_KEY in parameters:
+
+                            ax_ldm.text(
+                                i_column_g_model,
+                                i_parameter,
+                                f"{delta_correlation_heatmap[i_parameter, i_column_g_model]:.2g}",
+                                ha="center",
+                                va="center",
+                                color=(
+                                    "black"
+                                    if abs(delta_correlation_heatmap[i_parameter, i_column_g_model])
+                                    < 0.8
+                                    else "white"
+                                ),
+                            )
+
+                        if parameter != LTM_KEY and LTM_KEY in parameters:
+
+                            ax_ltm.text(
+                                i_column_g_model,
+                                i_parameter,
+                                f"{tau_m_correlation_heatmap[i_parameter, i_column_g_model]:.2g}",
+                                ha="center",
+                                va="center",
+                                color=(
+                                    "black"
+                                    if abs(tau_m_correlation_heatmap[i_parameter, i_column_g_model])
+                                    < 0.8
+                                    else "white"
+                                ),
+                            )
+
+        fig.suptitle(" ".join([word.capitalize() for word in filename[9:].split("_")]))
+        tight_layout()
+
+        if has_negative_uncertainties.all():
+
+            filename = "NEG_" + filename
+
+        fig.savefig(str(output_path / filename) + "_comparative.pdf", bbox_inches="tight")
+        close(fig)
 
 
 if __name__ == "__main__":
 
-    plot_solutions(root=Path(argv[1]))
+    plot_solutions(root=Path("solution" if len(argv) < 2 else argv[1]))
