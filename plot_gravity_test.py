@@ -345,7 +345,7 @@ def plot_solutions(
 
     alpha_subdirectory = root / ("fix_alpha_" + str(alpha).lower())
     delta_subdirectory = alpha_subdirectory / ("fix_log10_delta_" + str(delta).lower())
-    tau_m_subdirectory = delta_subdirectory / ("fix_log10_tau_m_" + str(alpha).lower())
+    tau_m_subdirectory = delta_subdirectory / ("fix_log10_tau_m_" + str(tau_m).lower())
     checkpoint_tuple = (
         alpha,
         delta,
