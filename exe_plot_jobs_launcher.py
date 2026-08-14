@@ -94,7 +94,7 @@ cd {quote(str(workdir.resolve()))}
 
 if command -v module >/dev/null 2>&1; then
     module purge
-    module load {quote(DEFAULT_CLUSTER_PYTHON_MODULE)}
+    module load {quote(str(DEFAULT_CLUSTER_PYTHON_MODULE))}
 fi
 
 """
