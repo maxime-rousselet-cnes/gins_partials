@@ -19,7 +19,7 @@ from subprocess import CalledProcessError, run
 # Hard-coded job configuration.
 # ---------------------------------------------------------------------------
 
-DEFAULT_CLUSTER_PYTHON_MODULE = Path("python/3.11.10")
+DEFAULT_CLUSTER_PYTHON_MODULE = "python/3.11"
 JOB_NAME = "plot_gravity"
 SLURM_FILE = Path("run_plot_gravity.sbatch")
 WALLTIME = "24:00:00"
@@ -66,8 +66,6 @@ def make_slurm_script(workdir: Path = Path(".")) -> Path:
     slurm_file.parent.mkdir(parents=True, exist_ok=True)
 
     logs_dir = workdir.joinpath("logs").resolve()
-    cluster_python = DEFAULT_CLUSTER_PYTHON_MODULE.resolve() / "bin" / "python"
-
     preamble = f"""#!/bin/bash
 
 #SBATCH --job-name={JOB_NAME}
@@ -94,7 +92,7 @@ cd {quote(str(workdir.resolve()))}
 
 if command -v module >/dev/null 2>&1; then
     module purge
-    module load {quote(str(DEFAULT_CLUSTER_PYTHON_MODULE))}
+    module load {quote(DEFAULT_CLUSTER_PYTHON_MODULE)}
 fi
 
 """
@@ -110,7 +108,7 @@ fi
             flags.append("--tau_m")
 
         command = [
-            str(cluster_python),
+            "python",
             str(PLOT_SCRIPT),
             "--root",
             ROOT,
