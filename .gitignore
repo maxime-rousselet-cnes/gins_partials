@@ -3,6 +3,8 @@ solution*
 *heatmaps.svg*
 constraints_G_*
 rheology_*
+logs
+*.sbatch
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

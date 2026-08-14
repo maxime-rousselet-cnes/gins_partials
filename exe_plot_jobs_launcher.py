@@ -22,7 +22,7 @@ from subprocess import CalledProcessError, run
 DEFAULT_CLUSTER_PYTHON_MODULE = Path("python/3.11.10")
 JOB_NAME = "plot_gravity"
 SLURM_FILE = Path("run_plot_gravity.sbatch")
-WALLTIME = "04:00:00"
+WALLTIME = "24:00:00"
 MEM = "4G"
 CPUS_PER_TASK = 1
 ACCOUNT = "grgs"
