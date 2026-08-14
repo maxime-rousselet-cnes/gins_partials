@@ -256,65 +256,72 @@ def produce_uncrossed_figures(
 
     file_path_to_save = create_parallel_path(root=root, file=file, output_root=output_root)
     solutions, formal_uncertainties, correlations = ingest_dynamo_d_solution(file=file)
+    file_to_save = file_path_to_save / (coeff[1:-1] + ".pdf")
 
-    for degree in [2, 4, 6]:
+    if not file_to_save.exists():
 
-        for order in [0, 1] if degree < 5 else [0]:
+        for degree in [2, 4, 6]:
 
-            for parameter_type in (
-                [ParameterType.C, ParameterType.S] if order == 1 else [ParameterType.C]
-            ):
+            for order in [0, 1] if degree < 5 else [0]:
 
-                dates = [
-                    parameter[3]
-                    for parameter in solutions.keys()
-                    if parameter[0] == parameter_type
-                    and parameter[1] == degree
-                    and parameter[2] == order
-                    and parameter[3] is not None
-                ]
-                dates.sort()
-                values = [solutions[(parameter_type, degree, order, date, None)] for date in dates]
-                sigmas = array(
-                    object=[
-                        (
-                            0
-                            if (parameter_type, degree, order, date, None)
-                            not in formal_uncertainties
-                            else formal_uncertainties[(parameter_type, degree, order, date, None)]
-                        )
-                        for date in dates
-                    ],
-                    dtype=float,
-                )
-                figure, ax = subplots(figsize=(14, 4))
-                ax.errorbar(
-                    dates,
-                    values,
-                    yerr=abs(sigmas),
-                    fmt="o-",
-                    color="b" if array(object=sigmas > 0, dtype=bool).all() else "r",
-                    capsize=3,
-                    lw=1,
-                )
-                q1, q2, q3 = quantile(values, [0.25, 0.50, 0.75])
-                _, _, q3_sigma = quantile(abs(sigmas), [0.25, 0.50, 0.75])
-                ax.set_ylim(q1 - 2 * (q2 - q1 - q3_sigma), q3 + 2 * (q3 + q3_sigma - q2))
-                coeff = (
-                    (r"$C_{" if parameter_type == ParameterType.C else r"$S_{")
-                    + str(degree)
-                    + str(order)
-                    + "}$"
-                )
-                ax.set_title(coeff)
-                ax.set_xlabel("Date")
-                ax.set_ylabel("Solution")
-                ax.grid(True)
-                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
-                figure.autofmt_xdate()
-                figure.tight_layout()
-                figure.savefig(str(file_path_to_save / coeff[1:-1]) + ".pdf")
-                close(figure)
+                for parameter_type in (
+                    [ParameterType.C, ParameterType.S] if order == 1 else [ParameterType.C]
+                ):
+
+                    dates = [
+                        parameter[3]
+                        for parameter in solutions.keys()
+                        if parameter[0] == parameter_type
+                        and parameter[1] == degree
+                        and parameter[2] == order
+                        and parameter[3] is not None
+                    ]
+                    dates.sort()
+                    values = [
+                        solutions[(parameter_type, degree, order, date, None)] for date in dates
+                    ]
+                    sigmas = array(
+                        object=[
+                            (
+                                0
+                                if (parameter_type, degree, order, date, None)
+                                not in formal_uncertainties
+                                else formal_uncertainties[
+                                    (parameter_type, degree, order, date, None)
+                                ]
+                            )
+                            for date in dates
+                        ],
+                        dtype=float,
+                    )
+                    figure, ax = subplots(figsize=(14, 4))
+                    ax.errorbar(
+                        dates,
+                        values,
+                        yerr=abs(sigmas),
+                        fmt="o-",
+                        color="b" if array(object=sigmas > 0, dtype=bool).all() else "r",
+                        capsize=3,
+                        lw=1,
+                    )
+                    q1, q2, q3 = quantile(values, [0.25, 0.50, 0.75])
+                    _, _, q3_sigma = quantile(abs(sigmas), [0.25, 0.50, 0.75])
+                    ax.set_ylim(q1 - 2 * (q2 - q1 - q3_sigma), q3 + 2 * (q3 + q3_sigma - q2))
+                    coeff = (
+                        (r"$C_{" if parameter_type == ParameterType.C else r"$S_{")
+                        + str(degree)
+                        + str(order)
+                        + "}$"
+                    )
+                    ax.set_title(coeff)
+                    ax.set_xlabel("Date")
+                    ax.set_ylabel("Solution")
+                    ax.grid(True)
+                    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+                    figure.autofmt_xdate()
+                    figure.tight_layout()
+                    figure.savefig(file_to_save)
+                    close(figure)
 
     return solutions, formal_uncertainties, correlations
 
@@ -552,6 +559,12 @@ def plot_comparative(
     by_column: dict[str, tuple[dict, dict, dict]]
 
     for filename, by_column in gathered.items():
+
+        if (output_path / (filename + "_comparative.pdf")).exists() or (
+            output_path / ("NEG_" + filename + "_comparative.pdf")
+        ).exists():
+
+            continue
 
         ordered_columns = order_columns(labels=list(by_column.keys()))
         parameter_set = set(
@@ -899,7 +912,7 @@ def plot_comparative(
 
             filename = "NEG_" + filename
 
-        fig.savefig(str(output_path / filename) + "_comparative.pdf", bbox_inches="tight")
+        fig.savefig(output_path / (filename + "_comparative.pdf"), bbox_inches="tight")
         close(fig)
 
 
