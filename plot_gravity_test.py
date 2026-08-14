@@ -1,11 +1,14 @@
+"""
+plot_graivty_test.py example
+"""
+
 from __future__ import annotations
 
+from argparse import ArgumentParser, Namespace
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
 from re import compile, fullmatch
-from shutil import rmtree
-from sys import argv
 from time import time
 from typing import Optional
 
@@ -256,17 +259,24 @@ def produce_uncrossed_figures(
 
     file_path_to_save = create_parallel_path(root=root, file=file, output_root=output_root)
     solutions, formal_uncertainties, correlations = ingest_dynamo_d_solution(file=file)
-    file_to_save = file_path_to_save / (coeff[1:-1] + ".pdf")
 
-    if not file_to_save.exists():
+    for degree in [2, 4, 6]:
 
-        for degree in [2, 4, 6]:
+        for order in [0, 1] if degree < 5 else [0]:
 
-            for order in [0, 1] if degree < 5 else [0]:
+            for parameter_type in (
+                [ParameterType.C, ParameterType.S] if order == 1 else [ParameterType.C]
+            ):
 
-                for parameter_type in (
-                    [ParameterType.C, ParameterType.S] if order == 1 else [ParameterType.C]
-                ):
+                coeff = (
+                    (r"$C_{" if parameter_type == ParameterType.C else r"$S_{")
+                    + str(degree)
+                    + str(order)
+                    + "}$"
+                )
+                file_to_save = file_path_to_save / (coeff[1:-1] + ".pdf")
+
+                if not file_to_save.exists():
 
                     dates = [
                         parameter[3]
@@ -307,12 +317,6 @@ def produce_uncrossed_figures(
                     q1, q2, q3 = quantile(values, [0.25, 0.50, 0.75])
                     _, _, q3_sigma = quantile(abs(sigmas), [0.25, 0.50, 0.75])
                     ax.set_ylim(q1 - 2 * (q2 - q1 - q3_sigma), q3 + 2 * (q3 + q3_sigma - q2))
-                    coeff = (
-                        (r"$C_{" if parameter_type == ParameterType.C else r"$S_{")
-                        + str(degree)
-                        + str(order)
-                        + "}$"
-                    )
                     ax.set_title(coeff)
                     ax.set_xlabel("Date")
                     ax.set_ylabel("Solution")
@@ -327,85 +331,75 @@ def produce_uncrossed_figures(
 
 
 def plot_solutions(
-    root: Path = Path("solution"), output_root: Path = Path("solution_figures")
+    alpha: bool,
+    delta: bool,
+    tau_m: bool,
+    root: Path = Path("solution"),
+    output_root: Path = Path("solution_figures"),
 ) -> None:
     """
     Iterates on all solutions of the root directory and produces uncrossed solution figures.
     """
 
-    if output_root.exists() and not CHECKPOINT_TUPLES:
-
-        rmtree(output_root)
-
     t_0 = time()
 
-    for alpha_subdirectory in root.iterdir():
+    alpha_subdirectory = root / ("fix_alpha_" + str(alpha).lower())
+    delta_subdirectory = alpha_subdirectory / ("fix_log10_delta_" + str(delta).lower())
+    tau_m_subdirectory = delta_subdirectory / ("fix_log10_tau_m_" + str(alpha).lower())
+    checkpoint_tuple = (
+        alpha,
+        delta,
+        tau_m,
+    )
 
-        for delta_subdirectory in alpha_subdirectory.iterdir():
+    if checkpoint_tuple not in CHECKPOINT_TUPLES:
 
-            for tau_m_subdirectory in delta_subdirectory.iterdir():
+        gathered: dict[
+            str,
+            dict[
+                str,
+                tuple[
+                    dict[Parameter, float],
+                    dict[Parameter, float],
+                    dict[tuple[Parameter, Parameter], float],
+                ],
+            ],
+        ] = {}
 
-                checkpoint_tuple = (
-                    bool(alpha_subdirectory.name.split("_")[-1].capitalize()),
-                    bool(delta_subdirectory.name.split("_")[-1].capitalize()),
-                    bool(tau_m_subdirectory.name.split("_")[-1].capitalize()),
-                )
+        for g_subdirectory in tau_m_subdirectory.iterdir():
 
-                if checkpoint_tuple in CHECKPOINT_TUPLES:
+            fix_g = g_subdirectory.name.split("_")[-1] == "true"
 
-                    continue
+            for sub in g_subdirectory.iterdir():
 
-                t_1 = time()
-                gathered: dict[
-                    str,
-                    dict[
-                        str,
-                        tuple[
-                            dict[Parameter, float],
-                            dict[Parameter, float],
-                            dict[tuple[Parameter, Parameter], float],
-                        ],
-                    ],
-                ] = {}
+                if sub.is_file():
 
-                for g_subdirectory in tau_m_subdirectory.iterdir():
-
-                    fix_g = g_subdirectory.name.split("_")[-1] == "true"
-
-                    for sub in g_subdirectory.iterdir():
-
-                        if sub.is_file():
-
-                            gathered.setdefault(sub.stem, {})[
-                                "fix_g" if fix_g else "no_g_model"
-                            ] = produce_uncrossed_figures(
-                                root=root, file=sub, output_root=output_root
-                            )
-
-                        if not fix_g:
-
-                            if sub.is_dir():
-
-                                for g_model_subdirectory in sub.iterdir():
-
-                                    for file in g_model_subdirectory.iterdir():
-
-                                        gathered.setdefault(file.stem, {})[
-                                            sub.name + "/" + g_model_subdirectory.name
-                                        ] = produce_uncrossed_figures(
-                                            root=root, file=file, output_root=output_root
-                                        )
-
-                if gathered:
-
-                    file_path_to_save = create_parallel_path(
-                        root=root, file=tau_m_subdirectory, output_root=output_root
+                    gathered.setdefault(sub.stem, {})["fix_g" if fix_g else "no_g_model"] = (
+                        produce_uncrossed_figures(root=root, file=sub, output_root=output_root)
                     )
-                    plot_comparative(gathered=gathered, output_path=file_path_to_save)
 
-                print(tau_m_subdirectory, time() - t_1)
+                if not fix_g:
 
-    print("Total post-process time:", time() - t_0)
+                    if sub.is_dir():
+
+                        for g_model_subdirectory in sub.iterdir():
+
+                            for file in g_model_subdirectory.iterdir():
+
+                                gathered.setdefault(file.stem, {})[
+                                    sub.name + "/" + g_model_subdirectory.name
+                                ] = produce_uncrossed_figures(
+                                    root=root, file=file, output_root=output_root
+                                )
+
+        if gathered:
+
+            file_path_to_save = create_parallel_path(
+                root=root, file=tau_m_subdirectory, output_root=output_root
+            )
+            plot_comparative(gathered=gathered, output_path=file_path_to_save)
+
+    print(alpha, delta, tau_m, time() - t_0)
 
 
 def format_parameter(parameter: Parameter) -> Optional[str]:
@@ -916,6 +910,21 @@ def plot_comparative(
         close(fig)
 
 
+def parse_job_args() -> Namespace:
+    """
+    Defines a parsing function for command-line arguments.
+    """
+
+    parser = ArgumentParser()
+    parser.add_argument("--root", type=str, default="solution")
+    parser.add_argument("--alpha", action="store_true", default=False)
+    parser.add_argument("--delta", action="store_true", default=False)
+    parser.add_argument("--tau_m", action="store_true", default=False)
+
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
 
-    plot_solutions(root=Path("solution" if len(argv) < 2 else argv[1]))
+    args = parse_job_args()
+    plot_solutions(alpha=args.alpha, delta=args.delta, tau_m=args.tau_m, root=Path(args.root))
