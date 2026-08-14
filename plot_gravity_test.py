@@ -169,6 +169,12 @@ def ingest_dynamo_d_solution(
 
     # Gets matrix.
     parameters = list(formal_uncertainties.keys())
+
+    if len(parameters) == 0:
+
+        print(file)
+        return {}, {}, {}
+
     i_parameter = 0
     j_parameter = 0
     matrix = ones(shape=(len(parameters), len(parameters)))
@@ -186,7 +192,6 @@ def ingest_dynamo_d_solution(
             matrix[i_parameter, j_parameter] = float(
                 line[20 * k_parameter : 20 * (k_parameter + 1)]
             )
-
             j_parameter += 1
 
         if j_parameter > i_parameter:
@@ -259,6 +264,10 @@ def produce_uncrossed_figures(
 
     file_path_to_save = create_parallel_path(root=root, file=file, output_root=output_root)
     solutions, formal_uncertainties, correlations = ingest_dynamo_d_solution(file=file)
+
+    if solutions == {}:
+
+        return {}, {}, {}
 
     for degree in [2, 4, 6]:
 
