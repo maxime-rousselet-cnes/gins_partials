@@ -428,15 +428,9 @@ def produce_uncrossed_figures(
                         color="orange",
                         alpha=0.3,
                     )
-                    q1, q2, q3 = quantile(values, [0.25, 0.50, 0.75])
-                    _, _, q3_sigma = quantile(abs(sigmas), [0.25, 0.50, 0.75])
                     ax.set_ylim(
-                        min(
-                            q1 - 2 * (q2 - q1 + q3_sigma), min(reference_values - reference_sigmas)
-                        ),
-                        max(
-                            q3 + 2 * (q3 + q3_sigma - q2), max(reference_values + reference_sigmas)
-                        ),
+                        min(reference_values - reference_sigmas),
+                        max(reference_values + reference_sigmas),
                     )
                     ax.set_title(coeff)
                     ax.set_xlabel("Date")
