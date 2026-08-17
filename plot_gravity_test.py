@@ -404,14 +404,17 @@ def produce_uncrossed_figures(
                         dtype=float,
                     )
                     figure, ax = subplots(figsize=(14, 4))
-                    ax.errorbar(
+                    ax.fill_between(
+                        dates,
+                        values - abs(sigmas),
+                        values + abs(sigmas),
+                        color="b" if array(object=sigmas > 0, dtype=bool).all() else "r",
+                        alpha=0.3,
+                    )
+                    ax.scatter(
                         dates,
                         values,
-                        yerr=abs(sigmas),
-                        fmt="o-",
                         color="b" if array(object=sigmas > 0, dtype=bool).all() else "r",
-                        capsize=3,
-                        lw=1,
                     )
                     identifier = (
                         ("C" if parameter_type == ParameterType.C else "S")
@@ -428,10 +431,10 @@ def produce_uncrossed_figures(
                         color="orange",
                         alpha=0.3,
                     )
-                    ax.set_ylim(
+                    """ax.set_ylim(
                         min(reference_values - reference_sigmas),
                         max(reference_values + reference_sigmas),
-                    )
+                    )"""
                     ax.set_title(coeff)
                     ax.set_xlabel("Date")
                     ax.set_ylabel("Solution")
