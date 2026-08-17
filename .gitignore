@@ -5,6 +5,7 @@ constraints_G_*
 rheology_*
 logs
 *.sbatch
+RL05.shc
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
