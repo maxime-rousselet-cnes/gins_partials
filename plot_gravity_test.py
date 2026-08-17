@@ -424,7 +424,7 @@ def produce_uncrossed_figures(
                     ax.fill_between(
                         reference_dates,
                         reference_values - reference_sigmas,
-                        reference_sigmas + reference_sigmas,
+                        reference_values + reference_sigmas,
                         color="orange",
                         alpha=0.3,
                     )
