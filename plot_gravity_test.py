@@ -15,10 +15,11 @@ from typing import Optional
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec
 from matplotlib.pyplot import close, figure, setp, subplots, tight_layout
-from numpy import arange, array, ndarray, ones, quantile, zeros
+from numpy import arange, array, maximum, mean, ndarray, ones, zeros
 
 CHECKPOINT_TUPLES = []
 FLOAT_REGEX = compile(r"[+-]?\d+\.\d+E[+-]\d+|[+-]?\.\d+E[+-]\d+")
+SAFETY_DIVERGENCE_FACTOR = 3
 
 
 class ParameterType(Enum):
@@ -75,7 +76,7 @@ from pandas import Timestamp, date_range, to_datetime
 
 def gravity_timeseries(
     filename: str = "RL05.shc",
-    start: str = "1991-01-01",
+    start: str = "1991-01-11",
     end: str = "2025-12-31",
     step_days: int = 30,
 ) -> tuple[ndarray, dict[str, ndarray], dict[str, ndarray]]:
@@ -374,8 +375,9 @@ def produce_uncrossed_figures(
                     + "}$"
                 )
                 file_to_save = file_path_to_save / (coeff[1:-1] + ".pdf")
+                file_to_save_divergence = file_path_to_save / ("DIVERGENCE_" + coeff[1:-1] + ".pdf")
 
-                if not file_to_save.exists():
+                if not (file_to_save.exists() or file_to_save_divergence.exists()):
 
                     dates = [
                         parameter[3]
@@ -431,18 +433,36 @@ def produce_uncrossed_figures(
                         color="orange",
                         alpha=0.3,
                     )
-                    """ax.set_ylim(
-                        min(reference_values - reference_sigmas),
-                        max(reference_values + reference_sigmas),
-                    )"""
                     ax.set_title(coeff)
                     ax.set_xlabel("Date")
                     ax.set_ylabel("Solution")
                     ax.grid(True)
                     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+                    ax.set_ylim(
+                        min(reference_values) - 2 * min(reference_sigmas),
+                        max(reference_values) + 2 * max(reference_sigmas),
+                    )
                     figure.autofmt_xdate()
                     figure.tight_layout()
-                    figure.savefig(file_to_save)
+                    indices = [date in reference_dates for date in dates]
+                    reference_indices = [date in dates for date in reference_dates]
+                    divergence = (
+                        mean(
+                            abs(array(reference_values)[reference_indices] - array(values)[indices])
+                            / maximum(
+                                abs(array(reference_sigmas)[reference_indices]),
+                                abs(array(sigmas)[indices]),
+                            )
+                        )
+                        > SAFETY_DIVERGENCE_FACTOR
+                    )
+                    file_to_save_final = file_to_save_divergence if divergence else file_to_save
+                    figure.savefig(
+                        file_to_save_final.parent.joinpath(
+                            ("NEG_" if array(object=sigmas < 0, dtype=bool).any() else "")
+                            + file_to_save_final.name
+                        )
+                    )
                     close(figure)
 
     return solutions, formal_uncertainties, correlations
