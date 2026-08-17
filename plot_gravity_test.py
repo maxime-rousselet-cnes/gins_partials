@@ -69,6 +69,92 @@ MODE_LETTERS = {
 
 Parameter = tuple[ParameterType, int | None, int | None, datetime | None, ParameterMode | None]
 
+from numpy import cos, pi, sin, zeros_like
+from pandas import Timestamp, date_range, to_datetime
+
+
+def gravity_timeseries(
+    filename: str = "CNES_GRGS.RL05MF_2024_08.shc",
+    start: str = "1991-01-01",
+    end: str = "2025-12-31",
+    step_days: int = 30,
+) -> tuple[ndarray, dict[str, ndarray], dict[str, ndarray]]:
+    """
+    Extract C20, C21, C40, C41, C60 and their uncertainties from a
+    time-dependent gravity-field model.
+    """
+
+    wanted = {(2, 0), (2, 1), (4, 0), (4, 1), (6, 0)}
+    dates = date_range(start, end, freq=f"{step_days}D")
+    values = {
+        coeff: zeros_like(a=dates, dtype=float)
+        for coeff in ["C_20", "C_21", "S_21", "C_40", "C_41", "S_41", "C_60"]
+    }
+    uncertainties = {coeff: zeros_like(a=dates, dtype=float) for coeff in values.keys()}
+
+    with open(filename) as f:
+
+        for line in f:
+
+            if line[0] != "G":
+
+                continue
+
+            p = line.split()
+            parameter_type = p[0].lower()
+            n, m = int(p[1]), int(p[2])
+
+            if (n, m) not in wanted:
+
+                continue
+
+            c_value, s_value = float(p[3]), float(p[4])
+            c_sigma, s_sigma = float(p[5]), float(p[6])
+            t0 = to_datetime(p[-3].split(".")[0], format="%Y%m%d")
+            t1 = to_datetime(p[-2].split(".")[0], format="%Y%m%d")
+            indices = (dates >= t0) * (dates <= t1)
+            shift_dates = dates[indices] - t0
+            normalized_dates = shift_dates.total_seconds() / 86400 / 365
+
+            for coeff in "C" if m == 0 else "CS":
+
+                value = c_value if coeff == "C" else s_value
+                sigma = c_sigma if coeff == "C" else s_sigma
+
+                if "bias" in parameter_type:
+
+                    values[coeff + "_" + str(n) + str(m)][indices] += value
+                    uncertainties[coeff + "_" + str(n) + str(m)][indices] += sigma
+
+                elif "drift" in parameter_type:
+
+                    values[coeff + "_" + str(n) + str(m)][indices] += value * normalized_dates
+                    uncertainties[coeff + "_" + str(n) + str(m)][indices] += (
+                        sigma * normalized_dates
+                    )
+
+                elif "cos" in parameter_type:
+
+                    values[coeff + "_" + str(n) + str(m)][indices] += value * cos(
+                        2 * pi * normalized_dates
+                    )
+                    uncertainties[coeff + "_" + str(n) + str(m)][indices] += sigma * cos(
+                        2 * pi * normalized_dates
+                    )
+
+                elif "sin" in parameter_type:
+
+                    values[coeff + "_" + str(n) + str(m)][indices] += value * sin(
+                        2 * pi * normalized_dates
+                    )
+                    uncertainties[coeff + "_" + str(n) + str(m)][indices] += sigma * sin(
+                        2 * pi * normalized_dates
+                    )
+
+            continue
+
+    return dates, values, uncertainties
+
 
 def parse_parameter_name(
     name: str,
@@ -254,7 +340,11 @@ def create_parallel_path(root: Path, file: Path, output_root: Path) -> Path:
 
 
 def produce_uncrossed_figures(
-    root: Path, file: Path, output_root: Path
+    root: Path,
+    file: Path,
+    output_root: Path,
+    reference_dates: ndarray,
+    reference_field: tuple[dict[str, ndarray], dict[str, ndarray]],
 ) -> tuple[
     dict[Parameter, float], dict[Parameter, float], dict[tuple[Parameter, Parameter], float]
 ]:
@@ -323,9 +413,31 @@ def produce_uncrossed_figures(
                         capsize=3,
                         lw=1,
                     )
+                    identifier = (
+                        ("C" if parameter_type == ParameterType.C else "S")
+                        + "_"
+                        + str(degree)
+                        + str(order)
+                    )
+                    reference_values = reference_field[0][identifier]
+                    reference_sigmas = reference_field[1][identifier]
+                    ax.fill_between(
+                        reference_dates,
+                        reference_values - reference_sigmas,
+                        reference_sigmas + reference_sigmas,
+                        color="orange",
+                        alpha=0.3,
+                    )
                     q1, q2, q3 = quantile(values, [0.25, 0.50, 0.75])
                     _, _, q3_sigma = quantile(abs(sigmas), [0.25, 0.50, 0.75])
-                    ax.set_ylim(q1 - 2 * (q2 - q1 + q3_sigma), q3 + 2 * (q3 + q3_sigma - q2))
+                    ax.set_ylim(
+                        min(
+                            q1 - 2 * (q2 - q1 + q3_sigma), min(reference_values - reference_sigmas)
+                        ),
+                        max(
+                            q3 + 2 * (q3 + q3_sigma - q2), max(reference_values + reference_sigmas)
+                        ),
+                    )
                     ax.set_title(coeff)
                     ax.set_xlabel("Date")
                     ax.set_ylabel("Solution")
@@ -360,6 +472,7 @@ def plot_solutions(
         delta,
         tau_m,
     )
+    reference_dates, reference_values, reference_uncertainties = gravity_timeseries()
 
     if checkpoint_tuple not in CHECKPOINT_TUPLES:
 
@@ -384,7 +497,13 @@ def plot_solutions(
                 if sub.is_file():
 
                     gathered.setdefault(sub.stem, {})["fix_g" if fix_g else "no_g_model"] = (
-                        produce_uncrossed_figures(root=root, file=sub, output_root=output_root)
+                        produce_uncrossed_figures(
+                            root=root,
+                            file=sub,
+                            output_root=output_root,
+                            reference_dates=reference_dates,
+                            reference_field=(reference_values, reference_uncertainties),
+                        )
                     )
 
                 if not fix_g:
@@ -398,7 +517,11 @@ def plot_solutions(
                                 gathered.setdefault(file.stem, {})[
                                     sub.name + "/" + g_model_subdirectory.name
                                 ] = produce_uncrossed_figures(
-                                    root=root, file=file, output_root=output_root
+                                    root=root,
+                                    file=file,
+                                    output_root=output_root,
+                                    reference_dates=reference_dates,
+                                    reference_field=(reference_values, reference_uncertainties),
                                 )
 
         if gathered:
