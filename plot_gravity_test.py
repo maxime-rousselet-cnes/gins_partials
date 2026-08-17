@@ -325,7 +325,7 @@ def produce_uncrossed_figures(
                     )
                     q1, q2, q3 = quantile(values, [0.25, 0.50, 0.75])
                     _, _, q3_sigma = quantile(abs(sigmas), [0.25, 0.50, 0.75])
-                    ax.set_ylim(q1 - 2 * (q2 - q1 - q3_sigma), q3 + 2 * (q3 + q3_sigma - q2))
+                    ax.set_ylim(q1 - 2 * (q2 - q1 + q3_sigma), q3 + 2 * (q3 + q3_sigma - q2))
                     ax.set_title(coeff)
                     ax.set_xlabel("Date")
                     ax.set_ylabel("Solution")
@@ -672,7 +672,7 @@ def plot_comparative(
             format_parameter(parameter=parameter) for parameter in parameters_subset
         ]
         column_labels = [format_column_labels(column=column) for column in columns]
-        fig = figure(figsize=(25, 22))
+        fig = figure(figsize=(30, 22))
         grid = GridSpec(nrows=2, ncols=6, figure=fig)
 
         ax_solutions = fig.add_subplot(grid[0, 0:3])
