@@ -74,7 +74,7 @@ from pandas import Timestamp, date_range, to_datetime
 
 
 def gravity_timeseries(
-    filename: str = "CNES_GRGS.RL05MF_2024_08.shc",
+    filename: str = "RL05.shc",
     start: str = "1991-01-01",
     end: str = "2025-12-31",
     step_days: int = 30,
