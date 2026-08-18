@@ -439,7 +439,7 @@ def produce_uncrossed_figures(
                     ax.grid(True)
                     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
                     ax.set_ylim(
-                        min(reference_values) - 2 * min(reference_sigmas),
+                        min(reference_values) - 2 * max(reference_sigmas),
                         max(reference_values) + 2 * max(reference_sigmas),
                     )
                     figure.autofmt_xdate()
