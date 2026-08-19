@@ -13,10 +13,26 @@ from time import time
 from typing import Optional
 
 import matplotlib.dates as mdates
+from matplotlib.axes import Axes
 from matplotlib.gridspec import GridSpec
 from matplotlib.pyplot import close, figure, setp, subplots, tight_layout
-from numpy import arange, array, maximum, mean, ndarray, ones, zeros
+from numpy import (
+    arange,
+    array,
+    cos,
+    maximum,
+    mean,
+    ndarray,
+    ones,
+    pi,
+    quantile,
+    sin,
+    zeros,
+    zeros_like,
+)
+from pandas import date_range, to_datetime
 
+SIGMA_VALUES = [-13, -14]
 CHECKPOINT_TUPLES = []
 FLOAT_REGEX = compile(r"[+-]?\d+\.\d+E[+-]\d+|[+-]?\.\d+E[+-]\d+")
 SAFETY_DIVERGENCE_FACTOR = 3
@@ -69,9 +85,6 @@ MODE_LETTERS = {
 }
 
 Parameter = tuple[ParameterType, int | None, int | None, datetime | None, ParameterMode | None]
-
-from numpy import cos, pi, sin, zeros_like
-from pandas import Timestamp, date_range, to_datetime
 
 
 def gravity_timeseries(
@@ -355,10 +368,14 @@ def produce_uncrossed_figures(
 
     file_path_to_save = create_parallel_path(root=root, file=file, output_root=output_root)
     solutions, formal_uncertainties, correlations = ingest_dynamo_d_solution(file=file)
+    file_to_save = file_path_to_save.parent.joinpath(file_path_to_save.name)
 
-    if solutions == {}:
+    if solutions == {} or file_to_save.exists():
 
         return {}, {}, {}
+
+    figure, axes = subplots(7, 1, figsize=(14, 26), sharex=True)
+    i_ax = 0
 
     for degree in [2, 4, 6]:
 
@@ -374,96 +391,82 @@ def produce_uncrossed_figures(
                     + str(order)
                     + "}$"
                 )
-                file_to_save = file_path_to_save / (coeff[1:-1] + ".pdf")
-                file_to_save_divergence = file_path_to_save / ("DIVERGENCE_" + coeff[1:-1] + ".pdf")
-
-                if not (file_to_save.exists() or file_to_save_divergence.exists()):
-
-                    dates = [
-                        parameter[3]
-                        for parameter in solutions.keys()
-                        if parameter[0] == parameter_type
-                        and parameter[1] == degree
-                        and parameter[2] == order
-                        and parameter[3] is not None
-                    ]
-                    dates.sort()
-                    values = [
-                        solutions[(parameter_type, degree, order, date, None)] for date in dates
-                    ]
-                    sigmas = array(
-                        object=[
-                            (
-                                0
-                                if (parameter_type, degree, order, date, None)
-                                not in formal_uncertainties
-                                else formal_uncertainties[
-                                    (parameter_type, degree, order, date, None)
-                                ]
-                            )
-                            for date in dates
-                        ],
-                        dtype=float,
-                    )
-                    figure, ax = subplots(figsize=(14, 4))
-                    ax.fill_between(
-                        dates,
-                        values - abs(sigmas),
-                        values + abs(sigmas),
-                        color="b" if array(object=sigmas > 0, dtype=bool).all() else "r",
-                        alpha=0.3,
-                    )
-                    ax.scatter(
-                        dates,
-                        values,
-                        color="b" if array(object=sigmas > 0, dtype=bool).all() else "r",
-                    )
-                    identifier = (
-                        ("C" if parameter_type == ParameterType.C else "S")
-                        + "_"
-                        + str(degree)
-                        + str(order)
-                    )
-                    reference_values = reference_field[0][identifier]
-                    reference_sigmas = reference_field[1][identifier]
-                    ax.fill_between(
-                        reference_dates,
-                        reference_values - reference_sigmas,
-                        reference_values + reference_sigmas,
-                        color="orange",
-                        alpha=0.3,
-                    )
-                    ax.set_title(coeff)
-                    ax.set_xlabel("Date")
-                    ax.set_ylabel("Solution")
-                    ax.grid(True)
-                    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
-                    ax.set_ylim(
+                dates = [
+                    parameter[3]
+                    for parameter in solutions.keys()
+                    if parameter[0] == parameter_type
+                    and parameter[1] == degree
+                    and parameter[2] == order
+                    and parameter[3] is not None
+                ]
+                dates.sort()
+                values = [solutions[(parameter_type, degree, order, date, None)] for date in dates]
+                sigmas = array(
+                    object=[
+                        (
+                            0
+                            if (parameter_type, degree, order, date, None)
+                            not in formal_uncertainties
+                            else formal_uncertainties[(parameter_type, degree, order, date, None)]
+                        )
+                        for date in dates
+                    ],
+                    dtype=float,
+                )
+                ax: Axes = axes[i_ax]
+                ax.fill_between(
+                    dates,
+                    values - 3 * abs(sigmas),
+                    values + 3 * abs(sigmas),
+                    color="b" if array(object=sigmas > 0, dtype=bool).all() else "r",
+                    alpha=0.3,
+                )
+                ax.scatter(
+                    dates,
+                    values,
+                    color="b" if array(object=sigmas > 0, dtype=bool).all() else "r",
+                )
+                identifier = (
+                    ("C" if parameter_type == ParameterType.C else "S")
+                    + "_"
+                    + str(degree)
+                    + str(order)
+                )
+                reference_values = reference_field[0][identifier]
+                reference_sigmas = reference_field[1][identifier]
+                ax.fill_between(
+                    reference_dates,
+                    reference_values - reference_sigmas,
+                    reference_values + reference_sigmas,
+                    color="orange",
+                    alpha=0.3,
+                )
+                ax.set_title(coeff)
+                ax.set_xlabel("Date")
+                ax.set_ylabel("Solution")
+                ax.grid(True)
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+                q2max, q3max = quantile(values + 3 * abs(sigmas), (0.5, 0.75))
+                q1min, q2min = quantile(values - 3 * abs(sigmas), (0.25, 0.5))
+                ax.set_ylim(
+                    min(
                         min(reference_values) - 2 * max(reference_sigmas),
+                        q2min - 2 * (q2min - q1min),
+                    ),
+                    max(
                         max(reference_values) + 2 * max(reference_sigmas),
-                    )
-                    figure.autofmt_xdate()
-                    figure.tight_layout()
-                    indices = [date in reference_dates for date in dates]
-                    reference_indices = [date in dates for date in reference_dates]
-                    divergence = (
-                        mean(
-                            abs(array(reference_values)[reference_indices] - array(values)[indices])
-                            / maximum(
-                                abs(array(reference_sigmas)[reference_indices]),
-                                abs(array(sigmas)[indices]),
-                            )
-                        )
-                        > SAFETY_DIVERGENCE_FACTOR
-                    )
-                    file_to_save_final = file_to_save_divergence if divergence else file_to_save
-                    figure.savefig(
-                        file_to_save_final.parent.joinpath(
-                            ("NEG_" if array(object=sigmas < 0, dtype=bool).any() else "")
-                            + file_to_save_final.name
-                        )
-                    )
-                    close(figure)
+                        q2max + 2 * (q3max - q2max),
+                    ),
+                )
+                ax.set_xticklabels()
+                i_ax += 1
+
+    figure.autofmt_xdate()
+    figure.tight_layout()
+    # indices = [date in reference_dates for date in dates]
+    # reference_indices = [date in dates for date in reference_dates]
+    figure.savefig(file_to_save)
+    close(figure)
 
     return solutions, formal_uncertainties, correlations
 
@@ -527,19 +530,21 @@ def plot_solutions(
 
                     if sub.is_dir():
 
-                        for g_model_subdirectory in sub.iterdir():
+                        if int(sub.name.split("E")[-1]) in SIGMA_VALUES:
 
-                            for file in g_model_subdirectory.iterdir():
+                            for g_model_subdirectory in sub.iterdir():
 
-                                gathered.setdefault(file.stem, {})[
-                                    sub.name + "/" + g_model_subdirectory.name
-                                ] = produce_uncrossed_figures(
-                                    root=root,
-                                    file=file,
-                                    output_root=output_root,
-                                    reference_dates=reference_dates,
-                                    reference_field=(reference_values, reference_uncertainties),
-                                )
+                                for file in g_model_subdirectory.iterdir():
+
+                                    gathered.setdefault(file.stem, {})[
+                                        sub.name + "/" + g_model_subdirectory.name
+                                    ] = produce_uncrossed_figures(
+                                        root=root,
+                                        file=file,
+                                        output_root=output_root,
+                                        reference_dates=reference_dates,
+                                        reference_field=(reference_values, reference_uncertainties),
+                                    )
 
         if gathered:
 
