@@ -16,23 +16,11 @@ import matplotlib.dates as mdates
 from matplotlib.axes import Axes
 from matplotlib.gridspec import GridSpec
 from matplotlib.pyplot import close, figure, setp, subplots, tight_layout
-from numpy import (
-    arange,
-    array,
-    cos,
-    maximum,
-    mean,
-    ndarray,
-    ones,
-    pi,
-    quantile,
-    sin,
-    zeros,
-    zeros_like,
-)
+from numpy import arange, array, cos, ndarray, ones, pi, quantile, sin, zeros, zeros_like
 from pandas import date_range, to_datetime
 
 SIGMA_VALUES = [-13, -14]
+N_SIGMAS = 3
 CHECKPOINT_TUPLES = []
 FLOAT_REGEX = compile(r"[+-]?\d+\.\d+E[+-]\d+|[+-]?\.\d+E[+-]\d+")
 SAFETY_DIVERGENCE_FACTOR = 3
@@ -348,7 +336,7 @@ def create_parallel_path(root: Path, file: Path, output_root: Path) -> Path:
     """
 
     output_path = output_root / file.relative_to(root)
-    output_path.mkdir(parents=True, exist_ok=True)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     return output_path
 
@@ -416,8 +404,8 @@ def produce_uncrossed_figures(
                 ax: Axes = axes[i_ax]
                 ax.fill_between(
                     dates,
-                    values - 3 * abs(sigmas),
-                    values + 3 * abs(sigmas),
+                    values - N_SIGMAS * abs(sigmas),
+                    values + N_SIGMAS * abs(sigmas),
                     color="b" if array(object=sigmas > 0, dtype=bool).all() else "r",
                     alpha=0.3,
                 )
@@ -439,15 +427,15 @@ def produce_uncrossed_figures(
                     reference_values - reference_sigmas,
                     reference_values + reference_sigmas,
                     color="orange",
-                    alpha=0.3,
+                    alpha=0.7,
                 )
                 ax.set_title(coeff)
                 ax.set_xlabel("Date")
                 ax.set_ylabel("Solution")
                 ax.grid(True)
                 ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
-                q2max, q3max = quantile(values + 3 * abs(sigmas), (0.5, 0.75))
-                q1min, q2min = quantile(values - 3 * abs(sigmas), (0.25, 0.5))
+                q2max, q3max = quantile(values + N_SIGMAS * abs(sigmas), (0.5, 0.75))
+                q1min, q2min = quantile(values - N_SIGMAS * abs(sigmas), (0.25, 0.5))
                 ax.set_ylim(
                     min(
                         min(reference_values) - 2 * max(reference_sigmas),
@@ -458,7 +446,6 @@ def produce_uncrossed_figures(
                         q2max + 2 * (q3max - q2max),
                     ),
                 )
-                ax.set_xticklabels()
                 i_ax += 1
 
     figure.autofmt_xdate()
