@@ -356,7 +356,7 @@ def produce_uncrossed_figures(
 
     file_path_to_save = create_parallel_path(root=root, file=file, output_root=output_root)
     solutions, formal_uncertainties, correlations = ingest_dynamo_d_solution(file=file)
-    file_to_save = file_path_to_save.parent.joinpath(file_path_to_save.name)
+    file_to_save = file_path_to_save.parent.joinpath(file_path_to_save.name + ".pdf")
 
     if solutions == {} or file_to_save.exists():
 
