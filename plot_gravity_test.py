@@ -377,6 +377,10 @@ def produce_uncrossed_figures(
                 [ParameterType.C, ParameterType.S] if order == 1 else [ParameterType.C]
             ):
 
+                if (order == 0 and "pole" in file.name) or (order == 1 and "solid" in file.name):
+
+                    continue
+
                 coeff = (
                     (r"$C_{" if parameter_type == ParameterType.C else r"$S_{")
                     + str(degree)
