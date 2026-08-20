@@ -19,7 +19,7 @@ from matplotlib.pyplot import close, figure, setp, subplots, tight_layout
 from numpy import arange, array, cos, ndarray, ones, pi, quantile, sin, zeros, zeros_like
 from pandas import date_range, to_datetime
 
-SIGMA_VALUES = [-13, -14]
+SIGMA_VALUES = [-13]
 N_SIGMAS = 3
 CHECKPOINT_TUPLES = []
 FLOAT_REGEX = compile(r"[+-]?\d+\.\d+E[+-]\d+|[+-]?\.\d+E[+-]\d+")
@@ -366,10 +366,11 @@ def produce_uncrossed_figures(
 
         return {}, {}, {}
 
+    panels = 4 if "pole" in file.name else (3 if "solid" in file.name else 7)
     figure, axes = subplots(
-        7,
+        panels,
         1,
-        figsize=(14, 4 * (4 if "pole" in file.name else (3 if "solid" in file.name else 7)) - 2),
+        figsize=(14, 4 * panels - 2),
         sharex=True,
     )
     i_ax = 0
@@ -613,15 +614,9 @@ def format_column_labels(column: str) -> str:
 
         return "Adjusted unmodeled Gravity field"
 
-    sigma_exponent = column.split("E")[1].split("/")[0]
     modes = column.split("_G_")[1].replace("and_", "").split("_")
 
-    return (
-        r"$\sigma_G = 10^{"
-        + str(sigma_exponent)
-        + "}$: "
-        + " & ".join([mode[:3] for mode in modes])
-    )
+    return " & ".join([mode[:3] for mode in modes])
 
 
 def order_columns(labels: list[str]) -> list[str]:
