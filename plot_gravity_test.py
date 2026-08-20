@@ -293,7 +293,11 @@ def ingest_dynamo_d_solution(
         if parameter_i[3] is None:
 
             sum_abs = {
-                parameter_type: {d_o: 0.0 for d_o in [(2, 0), (2, 1), (4, 0), (4, 1), (6, 0)]}
+                parameter_type: {
+                    d_o: 0.0
+                    for d_o in [(2, 1), (4, 1)]
+                    + ([(2, 0), (4, 0), (6, 0)] if parameter_type == ParameterType.C else [])
+                }
                 for parameter_type in [ParameterType.C, ParameterType.S]
             }
 
