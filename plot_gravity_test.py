@@ -366,7 +366,12 @@ def produce_uncrossed_figures(
 
         return {}, {}, {}
 
-    figure, axes = subplots(7, 1, figsize=(14, 26), sharex=True)
+    figure, axes = subplots(
+        7,
+        1,
+        figsize=(14, 4 * (4 if "pole" in file.name else (3 if "solid" in file.name else 7)) - 2),
+        sharex=True,
+    )
     i_ax = 0
 
     for degree in [2, 4, 6]:
