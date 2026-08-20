@@ -407,12 +407,14 @@ def produce_uncrossed_figures(
                     values - N_SIGMAS * abs(sigmas),
                     values + N_SIGMAS * abs(sigmas),
                     color="b" if array(object=sigmas > 0, dtype=bool).all() else "r",
-                    alpha=0.3,
+                    alpha=0.4,
+                    label=rf"Solution ${N_SIGMAS}\sigma$",
                 )
                 ax.scatter(
                     dates,
                     values,
                     color="b" if array(object=sigmas > 0, dtype=bool).all() else "r",
+                    label="Solution",
                 )
                 identifier = (
                     ("C" if parameter_type == ParameterType.C else "S")
@@ -424,10 +426,19 @@ def produce_uncrossed_figures(
                 reference_sigmas = reference_field[1][identifier]
                 ax.fill_between(
                     reference_dates,
+                    reference_values - N_SIGMAS * reference_sigmas,
+                    reference_values + N_SIGMAS * reference_sigmas,
+                    color="orange",
+                    alpha=0.6,
+                    label=rf"Reference ${N_SIGMAS}\sigma$",
+                )
+                ax.fill_between(
+                    reference_dates,
                     reference_values - reference_sigmas,
                     reference_values + reference_sigmas,
-                    color="orange",
-                    alpha=0.7,
+                    color="red",
+                    alpha=0.8,
+                    label=r"Reference $1\sigma$",
                 )
                 ax.set_title(coeff)
                 ax.set_xlabel("Date")
@@ -446,6 +457,11 @@ def produce_uncrossed_figures(
                         q2max + 2 * (q3max - q2max),
                     ),
                 )
+
+                if i_ax == 0:
+
+                    ax.legend()
+
                 i_ax += 1
 
     figure.autofmt_xdate()
