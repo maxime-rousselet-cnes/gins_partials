@@ -6,6 +6,8 @@ rheology_*
 logs
 *.sbatch
 RL05.shc
+*field*
+periodogram.pdf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
