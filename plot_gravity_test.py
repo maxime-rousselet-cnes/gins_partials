@@ -351,6 +351,7 @@ def produce_uncrossed_figures(
     output_root: Path,
     reference_dates: ndarray,
     reference_field: tuple[dict[str, ndarray], dict[str, ndarray]],
+    get_anyway: bool = False,
 ) -> tuple[
     dict[Parameter, float], dict[Parameter, float], dict[tuple[Parameter, Parameter], float]
 ]:
@@ -362,11 +363,11 @@ def produce_uncrossed_figures(
     solutions, formal_uncertainties, correlations = ingest_dynamo_d_solution(file=file)
     file_to_save = file_path_to_save.parent.joinpath(file_path_to_save.name + ".pdf")
 
-    if solutions == {} or file_to_save.exists():
+    if not get_anyway and (solutions == {} or file_to_save.exists()):
 
         return {}, {}, {}
 
-    panels = 4 if "pole" in file.name else (3 if "solid" in file.name else 7)
+    panels = 7 if get_anyway else (4 if "pole" in file.name else (3 if "solid" in file.name else 7))
     figure, axes = subplots(
         panels,
         1,
@@ -383,7 +384,9 @@ def produce_uncrossed_figures(
                 [ParameterType.C, ParameterType.S] if order == 1 else [ParameterType.C]
             ):
 
-                if (order == 0 and "pole" in file.name) or (order == 1 and "solid" in file.name):
+                if not get_anyway and (
+                    (order == 0 and "pole" in file.name) or (order == 1 and "solid" in file.name)
+                ):
 
                     continue
 
@@ -453,6 +456,12 @@ def produce_uncrossed_figures(
                     color="red",
                     alpha=0.8,
                     label=r"Reference $1\sigma$",
+                )
+                ax.scatter(
+                    reference_dates,
+                    reference_values,
+                    color="r",
+                    marker="x",
                 )
                 ax.set_title(coeff)
                 ax.set_xlabel("Date")

@@ -27,6 +27,8 @@ DEFAULT_COEFFS = [
 PERIODIC_TERM_YEARS = 1.0
 OMEGA = 2 * pi / PERIODIC_TERM_YEARS
 DAYS_PER_YEAR = 365.25
+PERIODIC_ADDITIONAL_TERM_YEARS = 168 / DAYS_PER_YEAR
+OMEGA_ADDITIONAL = 2 * pi / PERIODIC_ADDITIONAL_TERM_YEARS
 
 
 def parse_date(value: str) -> date:
@@ -118,7 +120,7 @@ def harmonic_label(kind: str, degree: int, order: int, date_time: date) -> str:
 
 
 def parameter_names(
-    kind: str, degree: int, order: int, annual: bool, acceleration: bool
+    kind: str, degree: int, order: int, annual: bool, acceleration: bool, periodic_additional: bool
 ) -> list[str]:
     """
     Generates parameter signaletic elements.
@@ -137,6 +139,10 @@ def parameter_names(
 
             names.extend([f"CC_{suffix}", f"CS_{suffix}"])
 
+        if periodic_additional:
+
+            names.extend([f"CP_{suffix}", f"CQ_{suffix}"])
+
         names.extend([f"CA_{suffix}", f"CB_{suffix}"])
 
     elif kind == "S":
@@ -153,6 +159,10 @@ def parameter_names(
 
             names.extend([f"PC_{suffix}", f"PS_{suffix}"])
 
+        if periodic_additional:
+
+            names.extend([f"SP_{suffix}", f"SQ_{suffix}"])
+
         names.extend([f"PA_{suffix}", f"PB_{suffix}"])
 
     else:
@@ -163,7 +173,12 @@ def parameter_names(
 
 
 def model_coefficients(
-    t: float, annual: bool, acceleration: bool, omega: float = OMEGA
+    t: float,
+    annual: bool,
+    acceleration: bool,
+    periodic_additional: bool,
+    omega: float = OMEGA,
+    omega_additional: float = OMEGA_ADDITIONAL,
 ) -> list[float]:
     """
     Creates the constraint:
@@ -183,6 +198,15 @@ def model_coefficients(
             [
                 -cos(omega * t),
                 -sin(omega * t),
+            ]
+        )
+
+    if periodic_additional:
+
+        coeffs.extend(
+            [
+                -cos(omega_additional * t),
+                -sin(omega_additional * t),
             ]
         )
 
@@ -237,7 +261,11 @@ def coefficient_summary(coeffs: list[tuple[str, int, int]]) -> str:
 
 
 def write_parameter_creation_block(
-    lines: list[str], coeffs: list[tuple[str, int, int]], annual: bool, acceleration: bool
+    lines: list[str],
+    coeffs: list[tuple[str, int, int]],
+    annual: bool,
+    acceleration: bool,
+    periodic_additional: bool,
 ) -> None:
     """
     Creates the needed parameters to describe the model.
@@ -253,7 +281,12 @@ def write_parameter_creation_block(
     for kind, degree, order in coeffs:
 
         for name in parameter_names(
-            kind=kind, degree=degree, order=order, annual=annual, acceleration=acceleration
+            kind=kind,
+            degree=degree,
+            order=order,
+            annual=annual,
+            acceleration=acceleration,
+            periodic_additional=periodic_additional,
         ):
 
             lines.append(
@@ -266,7 +299,7 @@ def write_constraint_block(
     lines: list[str],
     kind_degree_order: tuple[str, int, int],
     dates: list[date],
-    options: tuple[bool, bool],
+    options: tuple[bool, bool, bool],
     sigma: str,
 ) -> None:
     """
@@ -280,13 +313,19 @@ def write_constraint_block(
         order=kind_degree_order[2],
         annual=options[0],
         acceleration=options[1],
+        periodic_additional=options[2],
     )
 
     for date_time in dates:
 
         t = fractional_year_from_2000(date_time=date_time, days_per_year=DAYS_PER_YEAR)
         param_coeffs = model_coefficients(
-            t=t, annual=options[0], acceleration=options[1], omega=OMEGA
+            t=t,
+            annual=options[0],
+            acceleration=options[1],
+            omega=OMEGA,
+            periodic_additional=options[2],
+            omega_additional=OMEGA_ADDITIONAL,
         )
         linked_count = 1 + len(param_names)
         first_param_name = param_names[0]
@@ -315,7 +354,7 @@ def write_constraint_block(
 def generate_file(
     output: Path,
     coeffs: list[tuple[str, int, int]],
-    options: tuple[bool, bool],
+    options: tuple[bool, bool, bool],
     sigma: str,
 ) -> None:
     """
@@ -325,7 +364,11 @@ def generate_file(
     dates = list(iter_dates(start=START_DATE, end=END_DATE))
     lines: list[str] = ["\n"]
     write_parameter_creation_block(
-        lines=lines, coeffs=coeffs, annual=options[0], acceleration=options[1]
+        lines=lines,
+        coeffs=coeffs,
+        annual=options[0],
+        acceleration=options[1],
+        periodic_additional=options[2],
     )
     summary = coefficient_summary(coeffs=coeffs)
     lines.append(f"##COM## Contraintes strictes sur {summary}")
@@ -420,6 +463,11 @@ def main() -> None:
         help="Include quadratic acceleration term.",
     )
     parser.add_argument(
+        "--additional_periodic",
+        action="store_true",
+        help="Include additional period cos/sin terms.",
+    )
+    parser.add_argument(
         "--sigma",
         default="1.0000E-19",
         help="Sigma value written at the end of each constraint line.",
@@ -429,7 +477,7 @@ def main() -> None:
     generate_file(
         output=args.output,
         coeffs=coeffs,
-        options=(args.annual, args.acceleration),
+        options=(args.annual, args.acceleration, args.additional_periodic),
         sigma=args.sigma,
     )
 
