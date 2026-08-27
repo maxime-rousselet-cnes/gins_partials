@@ -48,6 +48,8 @@ class ParameterMode(Enum):
     COS = auto()
     SIN = auto()
     BIAS = auto()
+    ADD_COS = auto()
+    ADD_SIN = auto()
 
 
 TYPE_MAP = {
@@ -60,6 +62,8 @@ MODE_MAP = {
     "C": ParameterMode.COS,
     "S": ParameterMode.SIN,
     "B": ParameterMode.BIAS,
+    "P": ParameterMode.ADD_COS,
+    "Q": ParameterMode.ADD_SIN,
 }
 LAM_KEY: Parameter = (ParameterType.LAM, None, None, None, None)
 LDM_KEY: Parameter = (ParameterType.LDM, None, None, None, None)
@@ -181,7 +185,7 @@ def parse_parameter_name(
             None,
         )
 
-    m = fullmatch(r"(C|P)(A|B|AA|C|S)_(\d)(\d)", name)
+    m = fullmatch(r"(C|P)(A|B|AA|C|S|P|Q)_(\d)(\d)", name)
 
     if m:
 
@@ -446,7 +450,7 @@ def produce_uncrossed_figures(
                     reference_values - N_SIGMAS * reference_sigmas,
                     reference_values + N_SIGMAS * reference_sigmas,
                     color="orange",
-                    alpha=0.6,
+                    alpha=0.3,
                     label=rf"Reference ${N_SIGMAS}\sigma$",
                 )
                 ax.fill_between(
@@ -454,14 +458,11 @@ def produce_uncrossed_figures(
                     reference_values - reference_sigmas,
                     reference_values + reference_sigmas,
                     color="red",
-                    alpha=0.8,
+                    alpha=0.5,
                     label=r"Reference $1\sigma$",
                 )
                 ax.scatter(
-                    reference_dates,
-                    reference_values,
-                    color="r",
-                    marker="x",
+                    reference_dates, reference_values, color="r", marker="x", label="Reference"
                 )
                 ax.set_title(coeff)
                 ax.set_xlabel("Date")
