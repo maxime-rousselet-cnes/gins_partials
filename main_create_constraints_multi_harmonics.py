@@ -161,7 +161,7 @@ def parameter_names(
 
         if periodic_additional:
 
-            names.extend([f"SP_{suffix}", f"SQ_{suffix}"])
+            names.extend([f"PP_{suffix}", f"PQ_{suffix}"])
 
         names.extend([f"PA_{suffix}", f"PB_{suffix}"])
 
