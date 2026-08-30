@@ -445,7 +445,7 @@ def generate_pole_tide_models(
                 love_numbers_partials[r"\log_{10}\tau_{m-inf}^{MANTLE_0}"],
             ],
         ),
-        total=4,
+        total=5,
     ):
 
         with Pool() as pool:
