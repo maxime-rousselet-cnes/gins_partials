@@ -371,7 +371,7 @@ def generate_pole_tide_models(
     n_parameter_values = len(
         unique(
             [
-                file.name.split("alpha")[1].split("Delta")[0]
+                file.name.split("alpha")[1].split("Q")[1].split("Delta")[0]
                 for file in file_path.glob("*")
                 if "period" not in file.name
             ]
