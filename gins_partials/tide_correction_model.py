@@ -377,7 +377,6 @@ def generate_pole_tide_models(
             ]
         )
     )
-    print(n_parameter_values)
     (
         tabs,
         love_number_log_frequencies,
@@ -441,7 +440,7 @@ def generate_pole_tide_models(
             [love_numbers]
             + [
                 love_numbers_partials[r"\alpha^{MANTLE_0}"],
-                love_numbers_partials[r"Q_\mu^{MANTLE_0}"],
+                love_numbers_partials[r"\log_{10}Q_\mu^{MANTLE_0}"],
                 love_numbers_partials[r"\log_{10}\Delta^{MANTLE_0}"],
                 love_numbers_partials[r"\log_{10}\tau_{m-inf}^{MANTLE_0}"],
             ],

@@ -317,7 +317,7 @@ def plot_pole_tide_models(
                     new_x=gins_model["dates"],
                 )
                 + sub_diurnal_correction,
-                label=rf"$\alpha={round(lam, 2)}$  $Q={round(lqm)}$  $\Delta={round(10**ldm, 2)}$  $\tau_m={round(10**(ltm))}$s",
+                label=rf"$\alpha={round(lam, 2)}$  $Q={round(10**lqm)}$  $\Delta={round(10**ldm, 2)}$  $\tau_m={round(10**(ltm))}$s",
                 s=2,
             )
 
@@ -375,7 +375,7 @@ def compare_acceleration_partials_to_finite_differences(
         ax: Axes
 
         for ax, parameter in zip(
-            ax_line, [r"\alpha", r"Q_\mu", r"\log_{10}(\Delta)", r"\log_{10}(\tau_m)"]
+            ax_line, [r"\alpha", r"\log_{10}(Q_\mu)", r"\log_{10}(\Delta)", r"\log_{10}(\tau_m)"]
         ):
 
             if "alpha" in parameter:
