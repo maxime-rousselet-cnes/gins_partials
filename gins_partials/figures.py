@@ -24,7 +24,14 @@ GINS_ARC_MONITORING_SHORTCUT_PLOTTER = 100
 GINS_ARC_MONITORING_START_JJUL = 25080
 GINS_ARC_MONITORING_END_JJUL = 25110
 GINS_ARC_MONITORING_JJUL_MARGIN = 30
-DEFAULT_MODEL_VALUES_TO_PLOT = [(0.2, 0, 3.51), (0.2, -1, 3.51), (0.25, 0, 3.51), (0.25, -1, 3.51)]
+DEFAULT_MODEL_VALUES_TO_PLOT = [
+    (0.1, 400, -0.5, 4),
+    (0.25, 300, -0.5, 3.51),
+    (0.2, 300, -0.5, 3.51),
+    (0.25, 400, -0.5, 3.51),
+    (0.25, 300, -0.1, 3.51),
+    (0.25, 300, -0.5, 4),
+]
 
 
 def get_gins_pole_motion_time_series(
@@ -143,42 +150,63 @@ def plot_pole_motion(
 
 
 def interpolate_by_axis(
-    alpha_delta_tau_m_values: tuple[ndarray, ndarray],
+    lam_values: ndarray,
+    lqm_values: ndarray,
+    ldm_values: ndarray,
+    ltm_values: ndarray,
+    lam: float,
+    lqm: float,
+    ldm: float,
+    ltm: float,
     jjul_dates: ndarray,
-    alpha_delta_tau_m: float,
     pole_tide_correction_model: ndarray,
 ) -> ndarray:
     """
     Interpolates axis by axis for plot purposes.
     """
 
-    alpha, log10_delta, log10_tau_m = alpha_delta_tau_m
-    pole_tide_correction_array = zeros(
-        shape=(len(alpha_delta_tau_m_values[1]), len(alpha_delta_tau_m_values[2]), len(jjul_dates))
+    pole_tide_correction_volume = zeros(
+        shape=(len(lqm_values), len(ldm_values), len(ltm_values), len(jjul_dates))
     )
 
-    for i_delta, _ in enumerate(alpha_delta_tau_m_values[1]):
+    for i_lqm, _ in enumerate(lqm_values):
 
-        for i_tau_m, _ in enumerate(alpha_delta_tau_m_values[2]):
+        for i_ldm, _ in enumerate(ldm_values):
+
+            for i_ltm, _ in enumerate(ltm_values):
+
+                for i_date, _ in enumerate(jjul_dates):
+
+                    pole_tide_correction_volume[i_lqm, i_ldm, i_ltm, i_date] = lagrange_order4(
+                        x=lam_values,
+                        y=pole_tide_correction_model[:, i_lqm, i_ldm, i_ltm, i_date],
+                        new_x=[lam],
+                    )[0]
+
+    pole_tide_correction_array = zeros(shape=(len(ldm_values), len(ltm_values), len(jjul_dates)))
+
+    for i_ldm, _ in enumerate(ldm_values):
+
+        for i_ltm, _ in enumerate(ltm_values):
 
             for i_date, _ in enumerate(jjul_dates):
 
-                pole_tide_correction_array[i_delta, i_tau_m, i_date] = lagrange_order4(
-                    x=alpha_delta_tau_m_values[0],
-                    y=pole_tide_correction_model[:, i_delta, i_tau_m, i_date],
-                    new_x=[alpha],
+                pole_tide_correction_array[i_ldm, i_ltm, i_date] = lagrange_order4(
+                    x=lqm_values,
+                    y=pole_tide_correction_volume[:, i_ldm, i_ltm, i_date],
+                    new_x=[lqm],
                 )[0]
 
-    pole_tide_correction_tab = zeros(shape=(len(alpha_delta_tau_m_values[2]), len(jjul_dates)))
+    pole_tide_correction_tab = zeros(shape=(len(ltm_values), len(jjul_dates)))
 
-    for i_tau_m, _ in enumerate(alpha_delta_tau_m_values[2]):
+    for i_ltm, _ in enumerate(ltm_values):
 
         for i_date, _ in enumerate(jjul_dates):
 
-            pole_tide_correction_tab[i_tau_m, i_date] = lagrange_order4(
-                x=alpha_delta_tau_m_values[1],
-                y=pole_tide_correction_array[:, i_tau_m, i_date],
-                new_x=[log10_delta],
+            pole_tide_correction_tab[i_ltm, i_date] = lagrange_order4(
+                x=ldm_values,
+                y=pole_tide_correction_array[:, i_ltm, i_date],
+                new_x=[ldm],
             )[0]
 
     pole_tide_correction = zeros(shape=len(jjul_dates))
@@ -186,9 +214,9 @@ def interpolate_by_axis(
     for i_date, _ in enumerate(jjul_dates):
 
         pole_tide_correction[i_date] = lagrange_order4(
-            x=alpha_delta_tau_m_values[2],
+            x=ltm_values,
             y=pole_tide_correction_tab[:, i_date],
-            new_x=[log10_tau_m],
+            new_x=[ltm],
         )[0]
 
     return pole_tide_correction
@@ -199,7 +227,7 @@ def plot_pole_tide_models(
     file: str = "gins_listing",
     tide_models_path: Path = TIDE_MODELS_PATH,
     pole_tide_file: str = POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
-    model_values_to_plot: Optional[list[tuple[float, float]]] = None,
+    model_values_to_plot: Optional[list[tuple[float, float, float, float]]] = None,
 ) -> None:
     """
     Compares the pole motiuon model with the GINS pole motion on a monitored arc.
@@ -223,14 +251,17 @@ def plot_pole_tide_models(
     jjul_dates = array(
         object=load_base_model(name="jjul_dates", path=tide_models_path), dtype=float
     )
-    alpha_values = array(
-        object=load_base_model(name="alpha_values", path=tide_models_path), dtype=float
+    lam_values = array(
+        object=load_base_model(name="lam_values", path=tide_models_path), dtype=float
     )
-    log10_delta_values = array(
-        object=load_base_model(name="log10_delta_values", path=tide_models_path), dtype=float
+    lqm_values = array(
+        object=load_base_model(name="lqm_values", path=tide_models_path), dtype=float
     )
-    log10_tau_m_values = array(
-        object=load_base_model(name="log10_tau_m_values", path=tide_models_path), dtype=float
+    ldm_values = array(
+        object=load_base_model(name="ldm_values", path=tide_models_path), dtype=float
+    )
+    ltm_values = array(
+        object=load_base_model(name="ltm_values", path=tide_models_path), dtype=float
     )
     mask = (GINS_ARC_MONITORING_END_JJUL + GINS_ARC_MONITORING_JJUL_MARGIN >= jjul_dates) * (
         jjul_dates >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN
@@ -262,20 +293,22 @@ def plot_pole_tide_models(
             label="IERS",
         )
 
-        for alpha, log10_delta, log10_tau_m in model_values_to_plot:
+        for lam, lqm, ldm, ltm in model_values_to_plot:
 
             ax.scatter(
                 gins_model["dates"],
                 lagrange_order4(
                     x=jjul_dates,
                     y=interpolate_by_axis(
-                        alpha_delta_tau_m_values=(
-                            alpha_values,
-                            log10_delta_values,
-                            log10_tau_m_values,
-                        ),
+                        lam_values=lam_values,
+                        lqm_values=lqm_values,
+                        ldm_values=ldm_values,
+                        ltm_values=ltm_values,
+                        lam=lam,
+                        lqm=lqm,
+                        ldm=ldm,
+                        ltm=ltm,
                         jjul_dates=jjul_dates,
-                        alpha_delta_tau_m=(alpha, log10_delta, log10_tau_m),
                         pole_tide_correction_model=array(
                             object=pole_tide_correction_models[component]["anelastic"],
                             dtype=float,
@@ -284,7 +317,7 @@ def plot_pole_tide_models(
                     new_x=gins_model["dates"],
                 )
                 + sub_diurnal_correction,
-                label=rf"$\alpha={alpha}$  $\Delta={10**log10_delta}$",
+                label=rf"$\alpha={lam}$  $Q={lqm}$  $\Delta={10**ldm}$  $\tau_m={10**(ltm)}$",
                 s=2,
             )
 
@@ -295,6 +328,9 @@ def plot_pole_tide_models(
     save_figure(figure=figure, figure_title="pole_tide_models")
 
 
+REFERENCE_PARAMETER_VALUES = {"lam": 0.1, "lqm": 400, "ldm": -0.5, "ltm": 3.5}
+
+
 def compare_acceleration_partials_to_finite_differences(
     d_parameter: float = 0.01,
     satellite: str = "ajisai",
@@ -303,31 +339,33 @@ def compare_acceleration_partials_to_finite_differences(
     Partial derivatives validation figure for a single arc at a single parameter value.
     """
 
-    epochs, acceleration, alpha_formal, log10_delta_formal, log10_tau_m_formal = read_for_partials(
+    epochs, acceleration, lam_formal, lqm_formal, ldm_formal, ltm_formal = read_for_partials(
         filename=f"rheology_{satellite}_checkup.yml"
     )
-    _, acceleration_alpha_plus_d_alpha, _, _, _ = read_for_partials(
-        filename=f"rheology_{satellite}_checkup_alpha_plus_" + str(d_parameter),
+    _, acceleration_lam_plus_d_lam, _, _, _, _ = read_for_partials(
+        filename=f"rheology_{satellite}_checkup_lam_plus_" + str(d_parameter),
         parameter_index=1,
-        parameter_value=0.26,
+        parameter_value=REFERENCE_PARAMETER_VALUES["lam"] + d_parameter,
     )
-    _, acceleration_log10_delta_plus_d_log10_delta, _, _, _ = read_for_partials(
-        filename=f"rheology_{satellite}_checkup_log10_delta_plus_" + str(d_parameter),
+    _, acceleration_lqm_plus_d_lqm, _, _, _, _ = read_for_partials(
+        filename=f"rheology_{satellite}_checkup_lqm_plus_" + str(100 * d_parameter),
         parameter_index=2,
-        parameter_value=0.01,
+        parameter_value=REFERENCE_PARAMETER_VALUES["lqm"] + 100 * d_parameter,
     )
-    _, acceleration_tau_m_plus_d_log10_tau_m, _, _, _ = read_for_partials(
-        filename=f"rheology_{satellite}_checkup_log10_tau_m_plus_" + str(d_parameter),
+    _, acceleration_ldm_plus_d_ldm, _, _, _, _ = read_for_partials(
+        filename=f"rheology_{satellite}_checkup_ldm_plus_" + str(d_parameter),
         parameter_index=3,
-        parameter_value=3.52,
+        parameter_value=REFERENCE_PARAMETER_VALUES["lam"] + d_parameter,
     )
-    alpha_finite_difference = (acceleration_alpha_plus_d_alpha - acceleration) / d_parameter
-    log10_delta_finite_difference = (
-        acceleration_log10_delta_plus_d_log10_delta - acceleration
-    ) / d_parameter
-    log10_tau_m_finite_difference = (
-        acceleration_tau_m_plus_d_log10_tau_m - acceleration
-    ) / d_parameter
+    _, acceleration_ltm_plus_d_ltm, _, _, _, _ = read_for_partials(
+        filename=f"rheology_{satellite}_checkup_ltm_plus_" + str(d_parameter),
+        parameter_index=4,
+        parameter_value=REFERENCE_PARAMETER_VALUES["ltm"] + d_parameter,
+    )
+    lam_finite_difference = (acceleration_lam_plus_d_lam - acceleration) / d_parameter
+    lqm_finite_difference = (acceleration_lqm_plus_d_lqm - acceleration) / (100 * d_parameter)
+    ldm_finite_difference = (acceleration_ldm_plus_d_ldm - acceleration) / d_parameter
+    ltm_finite_difference = (acceleration_ltm_plus_d_ltm - acceleration) / d_parameter
 
     axes: Iterable[Iterable[Axes]]
     figure, axes = subplots(3, 3, figsize=(12, 10), sharex=True)
@@ -336,37 +374,55 @@ def compare_acceleration_partials_to_finite_differences(
 
         ax: Axes
 
-        for ax, parameter in zip(ax_line, [r"\alpha", r"\log_{10}(\Delta)", r"\log_{10}(\tau_m)"]):
+        for ax, parameter in zip(
+            ax_line, [r"\alpha", r"Q_\mu", r"\log_{10}(\Delta)", r"\log_{10}(\tau_m)"]
+        ):
 
             if "alpha" in parameter:
 
                 ax.scatter(
                     epochs,
-                    alpha_formal[:, i],
+                    lam_formal[:, i],
                     c="b",
                     marker="x",
                     label="formal" if i == 0 else None,
                 )
                 ax.scatter(
                     epochs,
-                    alpha_finite_difference[:, i],
+                    lam_finite_difference[:, i],
                     c="b",
                     marker="o",
                     label="finite differences" if i == 0 else None,
                 )
 
-            elif "elta" in parameter:
+            elif "Q" in parameter:
 
                 ax.scatter(
                     epochs,
-                    log10_delta_formal[:, i],
+                    lqm_formal[:, i],
                     c="orange",
                     marker="x",
                     label="formal" if i == 0 else None,
                 )
                 ax.scatter(
                     epochs,
-                    log10_delta_finite_difference[:, i],
+                    lqm_finite_difference[:, i],
+                    c="orange",
+                    marker="o",
+                    label="finite differences" if i == 0 else None,
+                )
+            elif "elta" in parameter:
+
+                ax.scatter(
+                    epochs,
+                    ldm_formal[:, i],
+                    c="orange",
+                    marker="x",
+                    label="formal" if i == 0 else None,
+                )
+                ax.scatter(
+                    epochs,
+                    ldm_finite_difference[:, i],
                     c="orange",
                     marker="o",
                     label="finite differences" if i == 0 else None,
@@ -376,14 +432,14 @@ def compare_acceleration_partials_to_finite_differences(
 
                 ax.scatter(
                     epochs,
-                    log10_tau_m_formal[:, i],
+                    ltm_formal[:, i],
                     c="g",
                     marker="x",
                     label="formal" if i == 0 else None,
                 )
                 ax.scatter(
                     epochs,
-                    log10_tau_m_finite_difference[:, i],
+                    ltm_finite_difference[:, i],
                     c="g",
                     marker="o",
                     label="finite differences" if i == 0 else None,

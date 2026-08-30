@@ -1,12 +1,14 @@
-"""Submit the eight plot_gravity_test boolean combinations as a Slurm array.
+"""
+Submits the 16 plot_gravity_test boolean combinations as a Slurm array.
 
 Usage:
     python exe_plot_jobs_launcher.py
 
-The eight array tasks cover every possible combination of:
-    --alpha
-    --delta
-    --tau_m
+The 16 array tasks cover every possible combination of:
+    --lam
+    --lqm
+    --ldm
+    --ltm
 
 All Slurm settings are intentionally hard-coded here.
 """
@@ -30,22 +32,27 @@ ROOT = "/work/GRGS/users/rousselm/dynamo/rheology/solution"
 
 PLOT_SCRIPT = Path("plot_gravity_test.py").resolve()
 LAUNCHER_PATH = Path(__file__).resolve()
-N_TASKS = 8
+N_TASKS = 16
 
 
 def combinations() -> list[tuple[bool, bool, bool]]:
-    """Return all alpha/delta/tau_m combinations in task-id order."""
+    """
+    Returns all combinations in task-id order.
+    """
 
     return [
-        (alpha, delta, tau_m)
-        for alpha in (False, True)
-        for delta in (False, True)
-        for tau_m in (False, True)
+        (lam, lqm, ldm, ltm)
+        for lam in (False, True)
+        for lqm in (False, True)
+        for ldm in (False, True)
+        for ltm in (False, True)
     ]
 
 
 def quote_slurm_arg(value: str) -> str:
-    """Quote a command argument, preserving the Slurm array-variable syntax."""
+    """
+    Quotes a command argument, preserving the Slurm array-variable syntax.
+    """
 
     if value == "${SLURM_ARRAY_TASK_ID}":
         return '"${SLURM_ARRAY_TASK_ID}"'
@@ -54,13 +61,17 @@ def quote_slurm_arg(value: str) -> str:
 
 
 def shell_join_multiline(cmd: list[str]) -> str:
-    """Render a shell command over multiple lines."""
+    """
+    Renders a shell command over multiple lines.
+    """
 
     return " \\\n    ".join(quote_slurm_arg(x) for x in cmd)
 
 
 def make_slurm_script(workdir: Path = Path(".")) -> Path:
-    """Generate the Slurm script used by all eight array tasks."""
+    """
+    Generates the Slurm script used by all array tasks.
+    """
 
     slurm_file = SLURM_FILE.resolve()
     slurm_file.parent.mkdir(parents=True, exist_ok=True)
@@ -98,14 +109,16 @@ fi
 """
 
     task_commands = []
-    for task_id, (alpha, delta, tau_m) in enumerate(combinations(), start=1):
+    for task_id, (lam, lqm, ldm, ltm) in enumerate(combinations(), start=1):
         flags = []
-        if alpha:
-            flags.append("--alpha")
-        if delta:
-            flags.append("--delta")
-        if tau_m:
-            flags.append("--tau_m")
+        if lam:
+            flags.append("--lam")
+        if lqm:
+            flags.append("--lqm")
+        if ldm:
+            flags.append("--ldm")
+        if ltm:
+            flags.append("--ltm")
 
         command = [
             "python",
@@ -116,7 +129,7 @@ fi
         ]
 
         task_commands.append(f"""if [ "$SLURM_ARRAY_TASK_ID" -eq {task_id} ]; then
-    echo "Task {task_id}: alpha={str(alpha).lower()} delta={str(delta).lower()} tau_m={str(tau_m).lower()}"
+    echo "Task {task_id}: lam={str(lam).lower()} lqm={str(lqm).lower()} ldm={str(ldm).lower()} tau_m={str(ltm).lower()}"
     {shell_join_multiline(command)}
     echo "Job finished."
     exit 0
@@ -170,4 +183,5 @@ def submit_slurm(workdir: Path = Path(".")) -> None:
 
 
 if __name__ == "__main__":
+
     submit_slurm()

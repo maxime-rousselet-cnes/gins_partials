@@ -17,7 +17,6 @@ from alna import (
     SOLID_EARTH_NUMERICAL_MODELS_PATH,
     generate_parameter_lines,
     load_love_numbers_for_gins,
-    parameters_for_gins,
 )
 from base_models import (
     DATA_PATH,
@@ -62,37 +61,39 @@ END_VALUES = "  ! TIDE_TABLE_VALUES_END"
 MODEL_NAMES = [
     "elastic",
     "anelastic",
-    "alpha_partials",
-    "log10_delta_partials",
-    "log10_tau_m_partials",
+    "lam_partials",
+    "lqm_partials",
+    "ldm_partials",
+    "ltm_partials",
     "IERS",
 ]
 
 # IERS Conventions 2010, Chapter 6, Table 6.5b: long-period zonal tides for k20.
 # Doodson IDs are written without the comma and multiplied by 1000, matching the
 # nint(xnd(i) * 1000._DP) convention already used in f_marsol.f90 in GINS.
+REFERENCE_K2 = 0.30190
 IERS_LONG_PERIOD_ZONAL_TIDES: tuple[tuple[int, float], ...] = (
-    (55565, 0.00221),
-    (55575, 0.00441),
-    (56554, 0.04107),
-    (57555, 0.08214),
-    (57565, 0.08434),
-    (58554, 0.12320),
-    (63655, 0.47152),
-    (65445, 0.54217),
-    (65455, 0.54438),
-    (65465, 0.54658),
-    (65655, 0.55366),
-    (73555, 1.01590),
-    (75355, 1.08875),
-    (75555, 1.09804),
-    (75565, 1.10024),
-    (75575, 1.10245),
-    (83655, 1.56956),
-    (85455, 1.64241),
-    (85465, 1.64462),
-    (93555, 2.11394),
-    (95355, 2.18679),
+    (55565, 0.00221, 0.01347, -0.00541),
+    (55575, 0.00441, 0.01124, -0.00488),
+    (56554, 0.04107, 0.00547, -0.00349),
+    (57555, 0.08214, 0.00403, -0.00315),
+    (57565, 0.08434, 0.00398, -0.00313),
+    (58554, 0.12320, 0.00326, -0.00296),
+    (63655, 0.47152, 0.00101, -0.00242),
+    (65445, 0.54217, 0.00080, -0.00237),
+    (65455, 0.54438, 0.00080, -0.00237),
+    (65465, 0.54658, 0.00079, -0.00237),
+    (65655, 0.55366, 0.00077, -0.00236),
+    (73555, 1.01590, -0.00009, -0.00216),
+    (75355, 1.08875, -0.00018, -0.00213),
+    (75555, 1.09804, -0.00019, -0.00213),
+    (75565, 1.10024, -0.00019, -0.00213),
+    (75575, 1.10245, -0.00019, -0.00213),
+    (83655, 1.56956, -0.00065, -0.00202),
+    (85455, 1.64241, -0.00071, -0.00201),
+    (85465, 1.64462, -0.00071, -0.00201),
+    (93555, 2.11394, -0.00102, -0.00193),
+    (95355, 2.18679, -0.00106, -0.00192),
 )
 
 
@@ -330,12 +331,14 @@ def interpolate_love_number_grid_to_solid_tides(
     """
 
     interpolated = zeros(
-        shape=tuple(list(model_grid.shape[:3]) + [len(solid_tide_frequencies)]),
+        shape=tuple(
+            list(model_grid.shape[: len(model_grid.shape) - 2]) + [len(solid_tide_frequencies)]
+        ),
         dtype=complex,
     )
     target_log_frequencies = log(solid_tide_frequencies)
 
-    for idx in ndindex(model_grid.shape[:3]):
+    for idx in ndindex(model_grid.shape[: len(model_grid.shape) - 2]):
 
         k2_series: ndarray = model_grid[idx][0]
         interpolated[idx] = lagrange_order4(
@@ -375,11 +378,9 @@ def generate_pole_tide_models(
             ]
         )
     )
-    love_numbers_for_gins_tabs = generate_parameter_lines(
-        parameters=parameters_for_gins(n_parameter_values=n_parameter_values), write=False
-    )
     (
-        love_number_periods,
+        tabs,
+        love_number_log_frequencies,
         elastic,
         love_numbers,
         love_numbers_partials,
@@ -388,19 +389,10 @@ def generate_pole_tide_models(
         models=MODELS,
         path=file_path.parent,
         directory=file_path.name,
-        love_numbers_for_gins_tabs=love_numbers_for_gins_tabs,
     )
-
-    # For ascending tau_m values.
-    for parameter in love_numbers_partials.keys():
-
-        love_numbers_partials[parameter] = flip(m=love_numbers_partials[parameter], axis=2)
-
-    love_numbers = flip(m=love_numbers, axis=2)
-    love_number_log_frequencies = log(1 / love_number_periods)  # (yr^-1).
     pole_tide_correction_models: dict[str, dict[str, ndarray]] = {
         component: {
-            model_name: zeros(shape=tuple(list(love_numbers.shape[:3]) + [i_signal[1]]))
+            model_name: zeros(shape=tuple(list(love_numbers.shape[: len(tabs)]) + [i_signal[1]]))
             for model_name in MODEL_NAMES
         }
         for component in "CS"
@@ -441,14 +433,15 @@ def generate_pole_tide_models(
         -PHI_CONSTANT * (K_2_IERS.imag * initial_values[0] + K_2_IERS.real * initial_values[1])
         - pole_tide_correction_models["S"]["IERS"][0]
     )
-    grid_indices = list(ndindex(love_numbers.shape[:3]))
+    grid_indices = list(ndindex(love_numbers.shape[: len(tabs)]))
 
     for model_name, model_grid in tqdm(
         zip(
-            ["anelastic", "alpha_partials", "log10_delta_partials", "log10_tau_m_partials"],
+            ["anelastic", "lam_partials", "lqm_partials", "ldm_partials", "ltm_partials"],
             [love_numbers]
             + [
                 love_numbers_partials[r"\alpha^{MANTLE_0}"],
+                love_numbers_partials[r"Q_\mu^{MANTLE_0}"],
                 love_numbers_partials[r"\log_{10}\Delta^{MANTLE_0}"],
                 love_numbers_partials[r"\log_{10}\tau_{m-inf}^{MANTLE_0}"],
             ],
@@ -492,12 +485,12 @@ def generate_pole_tide_models(
                 pole_tide_correction_models["C"][model_name][idx] = c_model - c_model[0]
                 pole_tide_correction_models["S"][model_name][idx] = s_model - s_model[0]
 
-    return n_parameter_values, love_numbers_for_gins_tabs, pole_tide_correction_models
+    return n_parameter_values, tabs, pole_tide_correction_models
 
 
 def generate_solid_tide_models(
     n_parameter_values: int,
-    love_numbers_for_gins_tabs: dict[str, ndarray],
+    tabs: dict[str, ndarray],
     file_path: Path = SOLID_EARTH_NUMERICAL_MODELS_PATH.joinpath(DEFAULT_FOR_GINS_OUTPUT_DIRECTORY),
 ) -> dict[str, dict[float, ndarray]]:
     """
@@ -505,7 +498,8 @@ def generate_solid_tide_models(
     """
 
     (
-        love_number_periods,
+        _,
+        love_number_log_frequencies,
         elastic,
         love_numbers,
         love_numbers_partials,
@@ -514,19 +508,12 @@ def generate_solid_tide_models(
         models=MODELS,
         path=file_path.parent,
         directory=file_path.name,
-        love_numbers_for_gins_tabs=love_numbers_for_gins_tabs,
     )
-
-    # For ascending tau_m values.
-    for parameter in love_numbers_partials.keys():
-
-        love_numbers_partials[parameter] = flip(m=love_numbers_partials[parameter], axis=2)
-
-    love_numbers = flip(m=love_numbers, axis=2)
-    love_number_log_frequencies = log(1 / love_number_periods)  # (yr^-1).
     solid_tide_correction_models: dict[str, ndarray] = {
         model_name: zeros(
-            shape=tuple(list(love_numbers.shape[:3]) + [len(IERS_LONG_PERIOD_ZONAL_TIDES)]),
+            shape=tuple(
+                list(love_numbers.shape[: len(tabs)]) + [len(IERS_LONG_PERIOD_ZONAL_TIDES)]
+            ),
             dtype=complex,
         )
         for model_name in MODEL_NAMES
@@ -536,10 +523,10 @@ def generate_solid_tide_models(
     solid_tide_correction_models["IERS"][...] = complex(K_2_IERS)
     for model_name, model_grid in tqdm(
         zip(
-            ["anelastic", "alpha_partials", "log10_delta_partials", "log10_tau_m_partials"],
+            ["anelastic", "lam_partials", "lqm_partials", "ldm_partials", "ltm_partials"],
             [love_numbers] + list(love_numbers_partials.values()),
         ),
-        total=4,
+        total=5,
     ):
 
         solid_tide_correction_models[model_name][...] = interpolate_love_number_grid_to_solid_tides(
@@ -553,7 +540,7 @@ def generate_solid_tide_models(
 
 def save_pole_tide_corrections(
     dates: ndarray,
-    parameter_tabs: dict[str, ndarray],
+    tabs: dict[str, ndarray],
     pole_tide_correction_models: dict[str, dict[str, ndarray]],
     models_path: Path = TIDE_MODELS_PATH,
     pole_tide_corrections_file: Path = DEFAULT_POLE_TIDE_CORRECTION_FILE,
@@ -562,28 +549,28 @@ def save_pole_tide_corrections(
     Hard-codes the pole tide corrections and their partials in f_marpolsol.f90.
     """
 
-    alpha_values, delta_values, omega_m_values = tuple(parameter_tabs.values())
-    log10_delta_values = log10(delta_values)
-    log10_tau_m_values = flip(m=log10(1 / omega_m_values))
+    lam_values, lqm_values, ldm_values, ltm_values = tuple(tabs.values())
     model_jjul_dates = dates_to_jjul_dates(dates=dates)
     model_mask = (model_jjul_dates >= DATA_DATES_LOWER_BOUND - DATA_DATES_MARGIN) & (
         model_jjul_dates <= DATA_DATES_UPPER_BOUND + DATA_DATES_MARGIN
     )
     definitions_to_hard_code = [
-        "  ! Pole tide corrections generated from k2(alpha, log10(delta), log10(tau_m)).\n",
-        "  ! Partial arrays are derivatives wrt alpha, log10(delta), and log10(tau_m).\n",
+        "  ! Pole tide corrections generated from k2(lam, lqm, ldm, ltm).\n",
+        "  ! Partial arrays are derivatives wrt lam, lqm, ldm, ltm.\n",
         f"  integer :: n_dates = {len(model_jjul_dates[model_mask])}\n",
-        f"  integer :: n_alpha = {len(alpha_values)}\n",
-        f"  integer :: n_delta = {len(log10_delta_values)}\n",
-        f"  integer :: n_tau_m = {len(log10_tau_m_values)}\n",
+        f"  integer :: n_lam = {len(lam_values)}\n",
+        f"  integer :: n_lqm = {len(lqm_values)}\n",
+        f"  integer :: n_ldm = {len(ldm_values)}\n",
+        f"  integer :: n_ltm = {len(ltm_values)}\n",
     ]
     chunks_to_hard_code: list[str] = []
 
     for variable_name, array_to_write in {
         "jjul_dates": model_jjul_dates[model_mask],
-        "alpha_values": alpha_values,
-        "log10_delta_values": log10_delta_values,
-        "log10_tau_m_values": log10_tau_m_values,
+        "lam_values": lam_values,
+        "lqm_values": lam_values,
+        "ldm_values": lam_values,
+        "ltm_values": lam_values,
     }.items():
 
         declaration, assignment = hard_code_fortran90(
@@ -627,13 +614,14 @@ def save_pole_tide_corrections(
     )
     save_base_model(obj=model_jjul_dates, name="jjul_dates", path=models_path)
     save_base_model(obj=model_mask, name="model_mask", path=models_path)
-    save_base_model(obj=alpha_values, name="alpha_values", path=models_path)
-    save_base_model(obj=log10_delta_values, name="log10_delta_values", path=models_path)
-    save_base_model(obj=log10_tau_m_values, name="log10_tau_m_values", path=models_path)
+    save_base_model(obj=lam_values, name="lam_values", path=models_path)
+    save_base_model(obj=lqm_values, name="lqm_values", path=models_path)
+    save_base_model(obj=ldm_values, name="ldm_values", path=models_path)
+    save_base_model(obj=ltm_values, name="ltm_values", path=models_path)
 
 
 def save_solid_tide_corrections(
-    parameter_tabs: dict[str, ndarray],
+    tabs: dict[str, ndarray],
     solid_tide_correction_models: dict[str, ndarray],
     models_path: Path = TIDE_MODELS_PATH,
     solid_tide_corrections_file: Path = DEFAULT_SOLID_TIDE_CORRECTION_FILE,
@@ -647,29 +635,27 @@ def save_solid_tide_corrections(
     The solid_tide_index axis follows IERS_LONG_PERIOD_ZONAL_TIDES.
     """
 
-    alpha_values, delta_values, omega_m_values = tuple(parameter_tabs.values())
-    log10_delta_values = log10(delta_values)
-    log10_tau_m_values = flip(log10(1 / omega_m_values))
+    lam_values, lqm_values, ldm_values, ltm_values = tuple(tabs.values())
     solid_tide_doodson_ids = array(
-        object=[doodson_id for doodson_id, _ in IERS_LONG_PERIOD_ZONAL_TIDES],
+        object=[doodson_id for doodson_id, _, _, _ in IERS_LONG_PERIOD_ZONAL_TIDES],
         dtype=int,
     )
     solid_tide_frequency_values = tide_angular_frequencies_to_cycle_per_yr()
     definitions_to_hard_code = [
-        "  ! Solid tide k20 generated from k2(alpha, log10(delta), log10(tau_m), tide).\n",
+        "  ! Solid tide k20 generated from k2(lam, ldm, ldm, ltm, tide).\n",
         "  ! Frequency interpolation is done at the IERS Table 6.5b long-period zonal tides.\n",
-        "  ! Partial arrays are derivatives wrt alpha, log10(delta), and log10(tau_m).\n",
-        f"  integer :: n_alpha = {len(alpha_values)}\n",
-        f"  integer :: n_delta = {len(log10_delta_values)}\n",
-        f"  integer :: n_tau_m = {len(log10_tau_m_values)}\n",
+        f"  integer :: n_lam = {len(lam_values)}\n",
+        f"  integer :: n_lqm = {len(lqm_values)}\n",
+        f"  integer :: n_ldm = {len(ldm_values)}\n",
+        f"  integer :: n_ltm = {len(ltm_values)}\n",
         f"  integer :: n_solid_tides = {len(solid_tide_doodson_ids)}\n",
     ]
     chunks_to_hard_code: list[str] = []
     real_arrays = {
-        "solid_alpha_values": alpha_values,
-        "solid_log10_delta_values": log10_delta_values,
-        "solid_log10_tau_m_values": log10_tau_m_values,
-        "solid_tide_frequency_values": solid_tide_frequency_values,
+        "lam_values": lam_values,
+        "lqm_values": lqm_values,
+        "ldm_values": ldm_values,
+        "ltm_values": ltm_values,
     }
 
     for variable_name, array_to_write in real_arrays.items():
@@ -689,10 +675,11 @@ def save_solid_tide_corrections(
     definitions_to_hard_code.append(declaration)
     chunks_to_hard_code.append(assignment)
     model_to_fortran_variable = {
-        "anelastic": "solid_k2",
-        "alpha_partials": "solid_k2_dalpha",
-        "log10_delta_partials": "solid_k2_dlog10_delta",
-        "log10_tau_m_partials": "solid_k2_dlog10_tau_m",
+        "anelastic": "k2",
+        "lam_partials": "dk2_dlam",
+        "lqm_partials": "dk2_dlqm",
+        "ldm_partials": "dk2_dldm",
+        "ltm_partials": "dk2_dltm",
     }
 
     for model_name, fortran_prefix in model_to_fortran_variable.items():
@@ -739,6 +726,7 @@ def save_solid_tide_corrections(
     )
 
 
+# TODO
 def preprocess_and_save_tide_correction_partials(
     steady_state_signal_parameters: SteadyStateSignalParameters = DEFAULT_SIGNAL_PARAMETERS,
     models_path: Path = POLE_MODELS_PATH,
@@ -775,18 +763,16 @@ def preprocess_and_save_tide_correction_partials(
         initial_values=(m_1[0], m_2[0]),
         frequencies=frequencies,
     )
-    solid_models = generate_solid_tide_models(
-        n_parameter_values=n_parameter_values, love_numbers_for_gins_tabs=tabs
-    )
+    solid_models = generate_solid_tide_models(n_parameter_values=n_parameter_values, tabs=tabs)
     save_pole_tide_corrections(
         dates=dates,
-        parameter_tabs=tabs,
+        tabs=tabs,
         pole_tide_correction_models=pole_models,
         models_path=TIDE_MODELS_PATH,
         pole_tide_corrections_file=DEFAULT_POLE_TIDE_CORRECTION_FILE,
     )
     save_solid_tide_corrections(
-        parameter_tabs=tabs,
+        tabs=tabs,
         solid_tide_correction_models=solid_models,
         models_path=TIDE_MODELS_PATH,
         solid_tide_corrections_file=DEFAULT_SOLID_TIDE_CORRECTION_FILE,

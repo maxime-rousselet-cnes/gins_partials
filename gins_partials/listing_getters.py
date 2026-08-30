@@ -15,7 +15,7 @@ def read_for_partials(
     path: Path = GINS_LISTING_PATH,
     parameter_index: int = 1,
     parameter_value: float = 0.25,
-) -> tuple[ndarray, ndarray, ndarray, ndarray, ndarray]:
+) -> tuple[ndarray, ndarray, ndarray, ndarray, ndarray, ndarray]:
     """
     Gets tabs of epochs, accelerations, and parameter partials.
     Handles vector values split across multiple lines.
@@ -25,9 +25,10 @@ def read_for_partials(
 
     outputs = {
         "acc": [],
-        "alpha": [],
-        "log10_delta": [],
-        "log10_tau_m": [],
+        "lam": [],
+        "lqm": [],
+        "ldm": [],
+        "ltm": [],
     }
 
     current_key = None
@@ -55,10 +56,6 @@ def read_for_partials(
                 current_key = None
                 current_values = []
 
-                if parameter_index < 3:
-
-                    assert float(fields[1 + parameter_index]) == parameter_value
-
             elif key in outputs:
 
                 current_key = key
@@ -77,7 +74,8 @@ def read_for_partials(
     return (
         asarray(epochs),
         asarray(outputs["acc"]),
-        asarray(outputs["alpha"]),
-        asarray(outputs["log10_delta"]),
-        asarray(outputs["log10_tau_m"]),
+        asarray(outputs["lam"]),
+        asarray(outputs["lqm"]),
+        asarray(outputs["ldm"]),
+        asarray(outputs["ltm"]),
     )
