@@ -26,11 +26,11 @@ GINS_ARC_MONITORING_END_JJUL = 25110
 GINS_ARC_MONITORING_JJUL_MARGIN = 30
 DEFAULT_MODEL_VALUES_TO_PLOT = [
     (0.1, 400, -0.5, 4),
-    (0.25, 300, -0.5, 3.51),
-    (0.2, 300, -0.5, 3.51),
     (0.25, 400, -0.5, 3.51),
-    (0.25, 300, -0.1, 3.51),
-    (0.25, 300, -0.5, 4),
+    (0.2, 400, -0.5, 3.51),
+    (0.25, 300, -0.5, 3.51),
+    (0.25, 400, -0.1, 3.51),
+    (0.25, 400, -0.5, 4),
 ]
 
 
@@ -312,12 +312,12 @@ def plot_pole_tide_models(
                         pole_tide_correction_model=array(
                             object=pole_tide_correction_models[component]["anelastic"],
                             dtype=float,
-                        )[:, :, :, mask],
+                        )[:, :, :, :, mask],
                     ),
                     new_x=gins_model["dates"],
                 )
                 + sub_diurnal_correction,
-                label=rf"$\alpha={lam}$  $Q={lqm}$  $\Delta={10**ldm}$  $\tau_m={10**(ltm)}$",
+                label=rf"$\alpha={round(lam, 2)}$  $Q={round(lqm)}$  $\Delta={round(10**ldm, 2)}$  $\tau_m={round(10**(ltm))}$s",
                 s=2,
             )
 

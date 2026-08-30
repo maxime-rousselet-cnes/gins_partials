@@ -13,8 +13,6 @@ GINS_LISTING_PATH = DATA_PATH.joinpath("listing")
 def read_for_partials(
     filename: str,
     path: Path = GINS_LISTING_PATH,
-    parameter_index: int = 1,
-    parameter_value: float = 0.25,
 ) -> tuple[ndarray, ndarray, ndarray, ndarray, ndarray, ndarray]:
     """
     Gets tabs of epochs, accelerations, and parameter partials.

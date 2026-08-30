@@ -377,6 +377,7 @@ def generate_pole_tide_models(
             ]
         )
     )
+    print(n_parameter_values)
     (
         tabs,
         love_number_log_frequencies,

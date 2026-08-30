@@ -81,8 +81,6 @@ def fortran_sci(value: float, decimals: int = 13) -> str:
     x = abs(value)
     exponent = floor(log10(x)) + 1
     mantissa = x / (10.0**exponent)
-
-    # Protect against rounding from 0.9999999999999 to 1.0000000000000.
     rounded = round(mantissa, decimals)
 
     if rounded >= 1.0:
