@@ -5,7 +5,7 @@ The generated Fortran tables are gridded in the runtime interpolation variables
 (alpha, log10(Delta), log10(tau_m), date).
 """
 
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import Optional
 
@@ -448,7 +448,7 @@ def generate_pole_tide_models(
         total=5,
     ):
 
-        with Pool() as pool:
+        with Pool(processes=cpu_count() - 1) as pool:
 
             results = pool.starmap(
                 pole_motion_correction,
