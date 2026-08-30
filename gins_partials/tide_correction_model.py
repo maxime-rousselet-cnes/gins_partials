@@ -15,7 +15,6 @@ from alna import (
     ROOT_PATH,
     SECONDS_PER_YEAR,
     SOLID_EARTH_NUMERICAL_MODELS_PATH,
-    generate_parameter_lines,
     load_love_numbers_for_gins,
 )
 from base_models import (
@@ -25,7 +24,7 @@ from base_models import (
     lagrange_order4,
     save_base_model,
 )
-from numpy import array, asarray, conjugate, flip, log, log10, mean, ndarray, ndindex, unique, zeros
+from numpy import array, asarray, conjugate, log, mean, ndarray, ndindex, unique, zeros
 from scipy.fft import fft, fftfreq, ifft
 from tqdm import tqdm
 
