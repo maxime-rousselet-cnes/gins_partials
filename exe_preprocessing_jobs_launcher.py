@@ -110,15 +110,15 @@ exit 1
     return slurm_file
 
 
-def submit_slurm(workdir: Path = Path("."), n_jobs_max:int=500) -> None:
+def submit_slurm(workdir: Path = Path("."), n_jobs_max: int = 500) -> None:
     """Generate and submit the eight-task Slurm array."""
 
     logs_dir = workdir.joinpath("logs")
     logs_dir.mkdir(parents=True, exist_ok=True)
     Path(MODELS_PATH).parent.parent.parent.joinpath("tide_models")
     slurm_file = make_slurm_script(workdir=workdir)
-
-    array_spec = f"1-{len(Path(MODELS_PATH).glob("*")) - 1}%{n_jobs_max}"
+    n_jobs = len(Path(MODELS_PATH).glob("*")) - 1
+    array_spec = f"1-{n_jobs}%{n_jobs_max}"
 
     cmd = [
         "sbatch",
@@ -145,7 +145,7 @@ def submit_slurm(workdir: Path = Path("."), n_jobs_max:int=500) -> None:
             print(exc.stdout.rstrip())
 
         if exc.stderr:
-            
+
             print("sbatch stderr:")
             print(exc.stderr.rstrip())
 
