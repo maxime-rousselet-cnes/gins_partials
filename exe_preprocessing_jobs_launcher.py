@@ -22,7 +22,7 @@ MEM = "16G"
 CPUS_PER_TASK = 1
 ACCOUNT = "grgs"
 MODELS_PATH = (
-    "/home/users/qt/rousselm/repositories/common_data/tests/solid_earth_numerical_models/for_gins"
+    "/home/qt/rousselm/repositories/common_data/tests/solid_earth_numerical_models/for_gins"
 )
 TIDE_CORRECTION_MODEL_SCRIPT = Path("tide_correction_model_generation.py").resolve()
 LAUNCHER_PATH = Path(__file__).resolve()
