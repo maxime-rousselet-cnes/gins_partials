@@ -3,6 +3,7 @@ Main interraction functions with data files and python.
 """
 
 from pathlib import Path
+from shlex import quote
 
 from base_models import DATA_PATH, EARTH_RADIUS
 from numpy import ndarray, pi
@@ -24,6 +25,17 @@ DATA_DATES_UPPER_BOUND = 27500
 DATA_DATES_MARGIN = 100
 JJUL_1970_REFERENCE_YEAR = 2018
 JJUL_1970_REFERENCE_JJUL = 24837
+
+
+def quote_slurm_arg(value: str) -> str:
+    """
+    Quotes a command argument, preserving the Slurm array-variable syntax.
+    """
+
+    if value == "${SLURM_ARRAY_TASK_ID}":
+        return '"${SLURM_ARRAY_TASK_ID}"'
+
+    return quote(str(value))
 
 
 def get_c01_pole_motion_time_series(

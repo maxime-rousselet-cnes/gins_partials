@@ -96,6 +96,14 @@ IERS_LONG_PERIOD_ZONAL_TIDES: tuple[tuple[int, float], ...] = (
 )
 
 
+def hard_code_tide_correction_models():
+    pass
+
+
+def tide_correction_model_generation(file_path: Path) -> None:
+    pass
+
+
 def tide_angular_frequencies_to_cycle_per_yr(
     long_period_zonal_tides: tuple[tuple[int, float], ...] = IERS_LONG_PERIOD_ZONAL_TIDES,
 ) -> ndarray:
