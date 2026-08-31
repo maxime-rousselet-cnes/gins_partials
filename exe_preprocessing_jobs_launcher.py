@@ -22,7 +22,7 @@ MEM = "16G"
 CPUS_PER_TASK = 1
 ACCOUNT = "grgs"
 MODELS_PATH = (
-    "/home/users/qt/rousselm/repositories/common_data/tests/solid_earth_numerical_model/for_gins"
+    "/home/users/qt/rousselm/repositories/common_data/tests/solid_earth_numerical_models/for_gins"
 )
 TIDE_CORRECTION_MODEL_SCRIPT = Path("tide_correction_model_generation.py").resolve()
 LAUNCHER_PATH = Path(__file__).resolve()
@@ -115,7 +115,9 @@ def submit_slurm(workdir: Path = Path("."), n_jobs_max: int = 500) -> None:
 
     logs_dir = workdir.joinpath("logs")
     logs_dir.mkdir(parents=True, exist_ok=True)
-    Path(MODELS_PATH).parent.parent.parent.joinpath("tide_models")
+    Path(MODELS_PATH).parent.parent.parent.joinpath("tide_models").mkdir(
+        parents=True, exist_ok=True
+    )
     slurm_file = make_slurm_script(workdir=workdir)
     n_jobs = len(list(Path(MODELS_PATH).glob("*"))) - 1
     array_spec = f"1-{n_jobs}%{n_jobs_max}"
