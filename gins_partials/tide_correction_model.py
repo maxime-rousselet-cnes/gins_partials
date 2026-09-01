@@ -431,7 +431,7 @@ def interpolate_love_number_grid_to_solid_tides(
     return interpolated
 
 
-def hard_code_tide_generation_models(
+def hard_code_tide_correction_models(
     m_complex: ndarray,
     i_signal: tuple[int, int],
     initial_values: tuple[int, int],
