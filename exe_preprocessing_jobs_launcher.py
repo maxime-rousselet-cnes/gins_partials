@@ -115,7 +115,7 @@ def submit_slurm(workdir: Path = Path("."), n_jobs_max: int = 500) -> None:
 
     logs_dir = workdir.joinpath("logs")
     logs_dir.mkdir(parents=True, exist_ok=True)
-    Path(MODELS_PATH).parent.parent.parent.joinpath("tide_models").mkdir(
+    Path(MODELS_PATH).parent.parent.parent.parent.joinpath("tide_models").mkdir(
         parents=True, exist_ok=True
     )
     slurm_file = make_slurm_script(workdir=workdir)

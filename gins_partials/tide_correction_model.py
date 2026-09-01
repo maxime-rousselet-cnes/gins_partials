@@ -141,11 +141,11 @@ def pole_motion_correction(
         positive = frequencies > 0
         love_numbers[positive] = lagrange_order4(
             x=love_number_log_frequencies,
-            y=love_numbers_model.real[0],
+            y=love_numbers_model.real,
             new_x=log(frequencies[positive]),
         ) + 1j * lagrange_order4(
             x=love_number_log_frequencies,
-            y=love_numbers_model.imag[0],
+            y=love_numbers_model.imag,
             new_x=log(frequencies[positive]),
         )
 
@@ -189,8 +189,8 @@ def tide_correction_model_generation(
     pole_motion_file: str = "C01_pole_motion_time_series.txt",
 ) -> None:
     """
-    Gets Love numbers for a given rheological model, generates the corresponding pole tide and solid
-    Earth tide models and svaes them together in a single (.JSON) file.
+    Gets Love numbers for a given rheological model, generates the corresponding pole tide and
+    solid Earth tide models and svaes them together in a single (.JSON) file.
     """
 
     love_number_log_frequencies, love_numbers, love_number_partials = (
@@ -250,7 +250,7 @@ def tide_correction_model_generation(
     save_base_model(
         obj=corrections_to_save,
         name=file_path.name,
-        path=file_path.parent.parent.parent.joinpath("tide_models"),
+        path=file_path.parent.parent.parent.parent.joinpath("tide_models"),
     )
 
 
