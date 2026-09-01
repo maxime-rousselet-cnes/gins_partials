@@ -233,17 +233,17 @@ def tide_correction_model_generation(
             i_signal=(i_signal_start, len(dates)),
             frequencies=frequencies,
             m_complex=m_complex,
-            love_numbers=model[0],  # Degree 2 only.
+            love_numbers_model=model[0],  # Degree 2 only.
             love_number_log_frequencies=love_number_log_frequencies,
         )
         corrections_to_save["_".join(("k2", model_name, "real"))] = lagrange_order4(
             x=love_number_log_frequencies,
-            y=model.real[0],
+            y=model.real[0],  # Degree 2 only.
             new_x=solid_tide_frequencies,
         )
         corrections_to_save["_".join(("k2", model_name, "imag"))] = lagrange_order4(
             x=love_number_log_frequencies,
-            y=model.imag[0],
+            y=model.imag[0],  # Degree 2 only.
             new_x=solid_tide_frequencies,
         )
 
