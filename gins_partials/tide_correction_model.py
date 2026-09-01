@@ -5,26 +5,29 @@ The generated Fortran tables are gridded in the runtime interpolation variables
 (alpha, log10(Delta), log10(tau_m), date).
 """
 
-from multiprocessing import Pool, cpu_count
+from itertools import product
 from pathlib import Path
 from typing import Optional
 
 from alna import (
-    DEFAULT_FOR_GINS_OUTPUT_DIRECTORY,
-    MODELS,
     ROOT_PATH,
     SECONDS_PER_YEAR,
-    SOLID_EARTH_NUMERICAL_MODELS_PATH,
+    TEST_ELASTIC_INTEGRATION_PATH,
+    TO_GET_INVERSE_DERIVATIVES,
+    TO_GET_LOG_DERIVATIVES,
+    get_tabs_from_all_love_number_files,
     load_single_model_love_numbers_for_gins,
+    load_solid_earth_numerical_model,
 )
 from base_models import (
     DATA_PATH,
     SteadyStateSignalParameters,
     build_steady_state_regime_signal,
     lagrange_order4,
+    load_base_model,
     save_base_model,
 )
-from numpy import array, asarray, conjugate, log, mean, ndarray, ndindex, unique, zeros
+from numpy import array, asarray, conjugate, flip, log, mean, ndarray, ndindex, zeros
 from scipy.fft import fft, fftfreq, ifft
 
 from .utils import (
@@ -432,186 +435,200 @@ def interpolate_love_number_grid_to_solid_tides(
     return interpolated
 
 
-def hard_code_tide_correction_models(
-    m_complex: ndarray,
-    i_signal: tuple[int, int],
-    initial_values: tuple[int, int],
-    frequencies: ndarray,  # (yr^-1).
-    file_path: Path = SOLID_EARTH_NUMERICAL_MODELS_PATH.joinpath(DEFAULT_FOR_GINS_OUTPUT_DIRECTORY),
-) -> tuple[
-    int, dict[str, ndarray], dict[str, dict[str, ndarray]]
-]:  # n_parameter_values, Parameter tabs, then pole tide.
+def load_tide_correction_models(
+    path: Path = DATA_PATH.joinpath("tide_models"),
+) -> tuple[dict[str, ndarray], dict[str, ndarray]]:
     """
-    Build pole tide C/S correction series for k2 and its partials. Output model grids have shape
-    (n_alpha, n_delta, n_tau_m, n_dates/n_periods). The second and third axes correspond to
-    log10_delta_values and log10_tau_m_values.
+    TODO: describe.
     """
 
-    n_parameter_values = len(
-        unique(
-            [
-                file.name.split("alpha")[1].split("Q")[1].split("Delta")[0]
-                for file in file_path.glob("*")
-                if "period" not in file.name
-            ]
+    tabs = get_tabs_from_all_love_number_files(path=path)
+    all_correction_models = {}
+
+    for iterators in product(*(range(len(tab)) for tab in tabs.values())):
+
+        file_finder = list(
+            path.glob(
+                "*"
+                + "*".join(
+                    (f"{tab[iterator]:.2e}" for iterator, tab in zip(iterators, tabs.values()))
+                )
+                + "*"
+            )
         )
+
+        if not file_finder:
+
+            raise NameError
+
+        single_rheology_correction_models: dict[str, ndarray] = load_base_model(
+            name=file_finder[0].name, path=file_finder[0].parent
+        )
+
+        for (
+            correction_type,
+            correction_model,
+        ) in single_rheology_correction_models.items():
+
+            correction_model = array(object=correction_model, dtype=float)
+
+            if correction_type not in all_correction_models:
+
+                all_correction_models[correction_type] = zeros(
+                    shape=tuple([len(tab) for tab in tabs.values()] + list(correction_model.shape)),
+                    dtype=complex,
+                )
+
+            all_correction_models[correction_type][iterators] = correction_model
+
+    inverted_tabs = {}
+    # Change of variables for inverse.
+    for i_axis, parameter in enumerate(tabs.keys()):
+
+        if parameter in TO_GET_INVERSE_DERIVATIVES.keys():
+
+            inverted_tabs[TO_GET_INVERSE_DERIVATIVES[parameter]] = 1 / flip(m=tabs[parameter])
+            for correction_type in all_correction_models.keys():
+
+                all_correction_models[correction_type] = flip(
+                    m=all_correction_models[correction_type],
+                    axis=i_axis,
+                )
+
+        else:
+
+            inverted_tabs[parameter] = tabs[parameter]
+
+    log_inverted_tabs = {}
+    # Change of variables for log.
+    for i_axis, parameter in enumerate(inverted_tabs.keys()):
+
+        if parameter in TO_GET_LOG_DERIVATIVES:
+
+            log_inverted_tabs[r"\log_{10}" + parameter] = log(inverted_tabs[parameter]) / log(10)
+
+        else:
+
+            log_inverted_tabs[parameter] = inverted_tabs[parameter]
+
+    return log_inverted_tabs, all_correction_models
+
+
+def hard_code_tide_correction_models(
+    path: Path = DATA_PATH.joinpath("tide_models"),
+    steady_state_signal_parameters: SteadyStateSignalParameters = DEFAULT_SIGNAL_PARAMETERS,
+    models_path: Path = POLE_MODELS_PATH,
+    pole_motion_file: str = "C01_pole_motion_time_series.txt",
+) -> None:
+    """
+    TODO.
+    """
+
+    tabs, all_correction_models = load_tide_correction_models(path=path)
+
+    dates, m_1, m_2 = get_m1_m2_time_series(
+        models_path=models_path, pole_motion_file=pole_motion_file
     )
-    (
-        tabs,
-        love_number_log_frequencies,
-        elastic,
-        love_numbers,
-        love_numbers_partials,
-    ) = load_love_numbers_for_gins(
-        dummy_variable=n_parameter_values,
-        models=MODELS,
-        path=file_path.parent,
-        directory=file_path.name,
+    mean_m_1 = mean(a=m_1[: len(m_1)])
+    mean_m_2 = mean(a=m_2[: len(m_2)])
+    i_signal_start, steady_state_dates, steady_state_m_1 = build_steady_state_regime_signal(
+        t=dates,
+        signal=m_1 - mean_m_1,
+        plateau_length=steady_state_signal_parameters.plateau_length,
+        cubic_spline_length=steady_state_signal_parameters.cubic_spline_length,
     )
-    pole_tide_correction_models: dict[str, dict[str, ndarray]] = {
-        component: {
-            model_name: zeros(shape=tuple(list(love_numbers.shape[: len(tabs)]) + [i_signal[1]]))
-            for model_name in MODEL_NAMES
-        }
-        for component in "CS"
-    }
+    _, _, steady_state_m_2 = build_steady_state_regime_signal(
+        t=dates,
+        signal=m_2 - mean_m_2,
+        plateau_length=steady_state_signal_parameters.plateau_length,
+        cubic_spline_length=steady_state_signal_parameters.cubic_spline_length,
+    )
+    frequencies = fftfreq(
+        n=len(steady_state_dates), d=steady_state_dates[1] - steady_state_dates[0]
+    )
+    m_complex = fft(x=steady_state_m_1) - 1j * fft(x=steady_state_m_2)
+    elastic = load_solid_earth_numerical_model(
+        name="PREM",
+        path=TEST_ELASTIC_INTEGRATION_PATH,
+    ).love_numbers["real"][0][0]
     (
-        pole_tide_correction_models["C"]["elastic"],
-        pole_tide_correction_models["S"]["elastic"],
+        all_correction_models["C_elastic"],
+        all_correction_models["S_elastic"],
     ) = pole_motion_correction(
-        i_signal=i_signal,
+        i_signal=(i_signal_start, len(dates)),
         frequencies=frequencies,
         m_complex=m_complex,
-        love_numbers_model=elastic[0],  # n=2.
-        love_number_log_frequencies=love_number_log_frequencies,
+        love_numbers_model=elastic,
     )
     (
-        pole_tide_correction_models["C"]["IERS"],
-        pole_tide_correction_models["S"]["IERS"],
+        all_correction_models["C_IERS"],
+        all_correction_models["S_IERS"],
     ) = pole_motion_correction(
-        i_signal=i_signal,
+        i_signal=(i_signal_start, len(dates)),
         frequencies=frequencies,
         m_complex=m_complex,
         love_numbers_model=K_2_IERS,
-        love_number_log_frequencies=love_number_log_frequencies,
     )
-    pole_tide_correction_models["C"]["elastic"] += (
-        -PHI_CONSTANT * (K_2_IERS.real * initial_values[0] + K_2_IERS.imag * initial_values[1])
-        - pole_tide_correction_models["C"]["elastic"][0]
-    )
-    pole_tide_correction_models["S"]["elastic"] += (
-        -PHI_CONSTANT * (K_2_IERS.imag * initial_values[0] + K_2_IERS.real * initial_values[1])
-        - pole_tide_correction_models["S"]["elastic"][0]
-    )
-    pole_tide_correction_models["C"]["IERS"] += (
-        -PHI_CONSTANT * (K_2_IERS.real * initial_values[0] + K_2_IERS.imag * initial_values[1])
-        - pole_tide_correction_models["C"]["IERS"][0]
-    )
-    pole_tide_correction_models["S"]["IERS"] += (
-        -PHI_CONSTANT * (K_2_IERS.imag * initial_values[0] + K_2_IERS.real * initial_values[1])
-        - pole_tide_correction_models["S"]["IERS"][0]
-    )
-    grid_indices = list(ndindex(love_numbers.shape[: len(tabs)]))
 
-    for model_name, model_grid in tqdm(
-        zip(
-            ["anelastic", "lam_partials", "lqm_partials", "ldm_partials", "ltm_partials"],
-            [love_numbers]
-            + [
-                love_numbers_partials[r"\alpha^{MANTLE_0}"],
-                love_numbers_partials[r"\log_{10}Q_\mu^{MANTLE_0}"],
-                love_numbers_partials[r"\log_{10}\Delta^{MANTLE_0}"],
-                love_numbers_partials[r"\log_{10}\tau_{m-inf}^{MANTLE_0}"],
-            ],
-        ),
-        total=5,
-    ):
+    for correction_type in all_correction_models.keys():
 
-        with Pool(processes=cpu_count() - 1) as pool:
+        if (
+            "lam" in correction_type
+            or "lqm" in correction_type
+            or "ldm" in correction_type
+            or "ltm" in correction_type
+        ):
 
-            results = pool.starmap(
-                pole_motion_correction,
-                [
-                    (
-                        i_signal,
-                        frequencies,
-                        m_complex,
-                        model_grid[idx],
-                        love_number_log_frequencies,
-                    )
-                    for idx in grid_indices
-                ],
+            all_correction_models[correction_type] = (
+                all_correction_models[correction_type]
+                - all_correction_models[correction_type][..., 0]
             )
 
-        for idx, (c_model, s_model) in zip(grid_indices, results):
+        elif "C_" in correction_type:
 
-            if model_name == "anelastic":
+            all_correction_models[correction_type] = all_correction_models[correction_type] + (
+                -PHI_CONSTANT * (K_2_IERS.real * m_1[0] + K_2_IERS.imag * m_2[0])
+                - all_correction_models[correction_type][..., 0]
+            )
 
-                pole_tide_correction_models["C"][model_name][idx] = c_model + (
-                    -PHI_CONSTANT
-                    * (K_2_IERS.real * initial_values[0] + K_2_IERS.imag * initial_values[1])
-                    - c_model[0]
-                )
-                pole_tide_correction_models["S"][model_name][idx] = s_model + (
-                    -PHI_CONSTANT
-                    * (K_2_IERS.imag * initial_values[0] + K_2_IERS.real * initial_values[1])
-                    - s_model[0]
-                )
+        elif "S_" in correction_type:
 
-            else:
+            all_correction_models[correction_type] = all_correction_models[correction_type] + (
+                -PHI_CONSTANT * (K_2_IERS.imag * m_1[0] + K_2_IERS.real * m_2[0])
+                - all_correction_models[correction_type][..., 0]
+            )
 
-                pole_tide_correction_models["C"][model_name][idx] = c_model - c_model[0]
-                pole_tide_correction_models["S"][model_name][idx] = s_model - s_model[0]
-
-    """
-    Build the interpolated k2 to zonal long-period tides.
-    """
-
-    (
-        _,
-        love_number_log_frequencies,
-        elastic,
-        love_numbers,
-        love_numbers_partials,
-    ) = load_love_numbers_for_gins(
-        dummy_variable=n_parameter_values,
-        models=MODELS,
-        path=file_path.parent,
-        directory=file_path.name,
+    save_pole_tide_corrections(
+        dates=dates,
+        lam_values=tabs[r"\alpha^{MANTLE_0}"],
+        lqm_values=tabs[r"\Delta^{MANTLE_0}"],
+        ldm_values=tabs[r"Q_\mu^{MANTLE_0})"],
+        ltm_values=tabs[r"\omega_m^{MANTLE_0}"],
+        pole_tide_correction_models={
+            correction_type: correction_model
+            for correction_type, correction_model in all_correction_models.items()
+            if "C_" in correction_type or "S_" in correction_type
+        },
+        models_path=models_path,
     )
-    solid_tide_correction_models: dict[str, ndarray] = {
-        model_name: zeros(
-            shape=tuple(
-                list(love_numbers.shape[: len(tabs)]) + [len(IERS_LONG_PERIOD_ZONAL_TIDES)]
-            ),
-            dtype=complex,
-        )
-        for model_name in MODEL_NAMES
-    }
-    solid_tide_frequencies = tide_angular_frequencies_to_cycle_per_yr()
-    solid_tide_correction_models["elastic"][...] = elastic[0]
-    solid_tide_correction_models["IERS"][...] = complex(K_2_IERS)
-    for model_name, model_grid in tqdm(
-        zip(
-            ["anelastic", "lam_partials", "lqm_partials", "ldm_partials", "ltm_partials"],
-            [love_numbers] + list(love_numbers_partials.values()),
-        ),
-        total=5,
-    ):
-
-        solid_tide_correction_models[model_name][...] = interpolate_love_number_grid_to_solid_tides(
-            model_grid=model_grid,
-            love_number_log_frequencies=love_number_log_frequencies,
-            solid_tide_frequencies=solid_tide_frequencies,
-        )
-
-    return solid_tide_correction_models
+    save_solid_tide_corrections(
+        tabs=tabs,
+        solid_tide_correction_models={
+            correction_type: correction_model
+            for correction_type, correction_model in all_correction_models.items()
+            if not ("C_" in correction_type or "S_" in correction_type)
+        },
+        models_path=models_path,
+    )
 
 
 def save_pole_tide_corrections(
     dates: ndarray,
-    tabs: dict[str, ndarray],
-    pole_tide_correction_models: dict[str, dict[str, ndarray]],
+    lam_values: ndarray,
+    lqm_values: ndarray,
+    ldm_values: ndarray,
+    ltm_values: ndarray,
+    pole_tide_correction_models: dict[str, ndarray],
     models_path: Path = TIDE_MODELS_PATH,
     pole_tide_corrections_file: Path = DEFAULT_POLE_TIDE_CORRECTION_FILE,
 ) -> None:
@@ -619,7 +636,6 @@ def save_pole_tide_corrections(
     Hard-codes the pole tide corrections and their partials in f_marpolsol.f90.
     """
 
-    lam_values, lqm_values, ldm_values, ltm_values = tuple(tabs.values())
     model_jjul_dates = dates_to_jjul_dates(dates=dates)
     model_mask = (model_jjul_dates >= DATA_DATES_LOWER_BOUND - DATA_DATES_MARGIN) & (
         model_jjul_dates <= DATA_DATES_UPPER_BOUND + DATA_DATES_MARGIN
@@ -638,9 +654,9 @@ def save_pole_tide_corrections(
     for variable_name, array_to_write in {
         "jjul_dates": model_jjul_dates[model_mask],
         "lam_values": lam_values,
-        "lqm_values": lam_values,
-        "ldm_values": lam_values,
-        "ltm_values": lam_values,
+        "lqm_values": lqm_values,
+        "ldm_values": ldm_values,
+        "ltm_values": ltm_values,
     }.items():
 
         declaration, assignment = hard_code_fortran90(
@@ -649,21 +665,19 @@ def save_pole_tide_corrections(
         definitions_to_hard_code.append(declaration)
         chunks_to_hard_code.append(assignment)
 
-    for component in "CS":
+    for model_name, model in pole_tide_correction_models.items():
 
-        for model_name, model in pole_tide_correction_models[component].items():
+        # The IERS reference is saved to disk but not hard-coded in Fortran.
+        if "IERS" in model_name:
 
-            # The IERS reference is saved to disk but not hard-coded in Fortran.
-            if model_name == "IERS":
+            continue
 
-                continue
-
-            declaration, assignment = hard_code_fortran90(
-                variable_name="_".join((component, "potential", model_name)),
-                array_to_write=asarray(model, dtype=float)[..., model_mask],
-            )
-            definitions_to_hard_code.append(declaration)
-            chunks_to_hard_code.append(assignment)
+        declaration, assignment = hard_code_fortran90(
+            variable_name=model_name,
+            array_to_write=asarray(model, dtype=float)[..., model_mask],
+        )
+        definitions_to_hard_code.append(declaration)
+        chunks_to_hard_code.append(assignment)
 
     insert_between_markers(
         file_path=pole_tide_corrections_file,
