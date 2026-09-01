@@ -14,9 +14,9 @@ from gins_partials import quote_slurm_arg
 # ---------------------------------------------------------------------------
 
 DEFAULT_CLUSTER_PYTHON_MODULE = "python/3.11.10"
-DEFAULT_CLUSTER_VENV = Path(".").parent.joinpath("alna_venv")
+DEFAULT_CLUSTER_VENV = Path("/home/qt/rousselm/repositories/").joinpath("alna_venv")
 JOB_NAME = "generate_tide_model"
-SLURM_FILE = Path("run_plot_gravity.sbatch")
+SLURM_FILE = Path("run_tide_correction_model_generation.sbatch")
 WALLTIME = "00:30:00"
 MEM = "16G"
 CPUS_PER_TASK = 1

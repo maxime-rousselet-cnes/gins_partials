@@ -26,7 +26,6 @@ from base_models import (
 )
 from numpy import array, asarray, conjugate, log, mean, ndarray, ndindex, unique, zeros
 from scipy.fft import fft, fftfreq, ifft
-from tqdm import tqdm
 
 from .utils import (
     DATA_DATES_LOWER_BOUND,
