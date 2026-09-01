@@ -95,10 +95,6 @@ IERS_LONG_PERIOD_ZONAL_TIDES: tuple[tuple[int, float], ...] = (
 )
 
 
-def hard_code_tide_correction_models():
-    pass
-
-
 def tide_angular_frequencies_to_cycle_per_yr(
     long_period_zonal_tides: tuple[tuple[int, float], ...] = IERS_LONG_PERIOD_ZONAL_TIDES,
 ) -> ndarray:
@@ -193,65 +189,72 @@ def tide_correction_model_generation(
     solid Earth tide models and svaes them together in a single (.JSON) file.
     """
 
-    love_number_log_frequencies, love_numbers, love_number_partials = (
-        load_single_model_love_numbers_for_gins(file_path=file_path)
-    )
+    try:
 
-    dates, m_1, m_2 = get_m1_m2_time_series(
-        models_path=models_path, pole_motion_file=pole_motion_file
-    )
-    mean_m_1 = mean(a=m_1[: len(m_1)])
-    mean_m_2 = mean(a=m_2[: len(m_2)])
-    i_signal_start, steady_state_dates, steady_state_m_1 = build_steady_state_regime_signal(
-        t=dates,
-        signal=m_1 - mean_m_1,
-        plateau_length=steady_state_signal_parameters.plateau_length,
-        cubic_spline_length=steady_state_signal_parameters.cubic_spline_length,
-    )
-    _, _, steady_state_m_2 = build_steady_state_regime_signal(
-        t=dates,
-        signal=m_2 - mean_m_2,
-        plateau_length=steady_state_signal_parameters.plateau_length,
-        cubic_spline_length=steady_state_signal_parameters.cubic_spline_length,
-    )
-    frequencies = fftfreq(
-        n=len(steady_state_dates), d=steady_state_dates[1] - steady_state_dates[0]
-    )
-    m_complex = fft(x=steady_state_m_1) - 1j * fft(x=steady_state_m_2)
-    corrections_to_save = {}
-    solid_tide_frequencies = log(tide_angular_frequencies_to_cycle_per_yr())
-
-    for model_name, model in zip(
-        ["", "lam", "lqm", "ldm", "ltm"],
-        [love_numbers] + list(love_number_partials.values()),
-    ):
-
-        (
-            corrections_to_save["_".join(("C", model_name))],
-            corrections_to_save["_".join(("S", model_name))],
-        ) = pole_motion_correction(
-            i_signal=(i_signal_start, len(dates)),
-            frequencies=frequencies,
-            m_complex=m_complex,
-            love_numbers_model=model[0],  # Degree 2 only.
-            love_number_log_frequencies=love_number_log_frequencies,
-        )
-        corrections_to_save["_".join(("k2", model_name, "real"))] = lagrange_order4(
-            x=love_number_log_frequencies,
-            y=model.real[0],  # Degree 2 only.
-            new_x=solid_tide_frequencies,
-        )
-        corrections_to_save["_".join(("k2", model_name, "imag"))] = lagrange_order4(
-            x=love_number_log_frequencies,
-            y=model.imag[0],  # Degree 2 only.
-            new_x=solid_tide_frequencies,
+        love_number_log_frequencies, love_numbers, love_number_partials = (
+            load_single_model_love_numbers_for_gins(file_path=file_path)
         )
 
-    save_base_model(
-        obj=corrections_to_save,
-        name=file_path.name,
-        path=file_path.parent.parent.parent.parent.joinpath("tide_models"),
-    )
+        dates, m_1, m_2 = get_m1_m2_time_series(
+            models_path=models_path, pole_motion_file=pole_motion_file
+        )
+        mean_m_1 = mean(a=m_1[: len(m_1)])
+        mean_m_2 = mean(a=m_2[: len(m_2)])
+        i_signal_start, steady_state_dates, steady_state_m_1 = build_steady_state_regime_signal(
+            t=dates,
+            signal=m_1 - mean_m_1,
+            plateau_length=steady_state_signal_parameters.plateau_length,
+            cubic_spline_length=steady_state_signal_parameters.cubic_spline_length,
+        )
+        _, _, steady_state_m_2 = build_steady_state_regime_signal(
+            t=dates,
+            signal=m_2 - mean_m_2,
+            plateau_length=steady_state_signal_parameters.plateau_length,
+            cubic_spline_length=steady_state_signal_parameters.cubic_spline_length,
+        )
+        frequencies = fftfreq(
+            n=len(steady_state_dates), d=steady_state_dates[1] - steady_state_dates[0]
+        )
+        m_complex = fft(x=steady_state_m_1) - 1j * fft(x=steady_state_m_2)
+        corrections_to_save = {}
+        solid_tide_frequencies = log(tide_angular_frequencies_to_cycle_per_yr())
+
+        for model_name, model in zip(
+            ["", "lam", "lqm", "ldm", "ltm"],
+            [love_numbers] + list(love_number_partials.values()),
+        ):
+
+            (
+                corrections_to_save["_".join(("C", model_name))],
+                corrections_to_save["_".join(("S", model_name))],
+            ) = pole_motion_correction(
+                i_signal=(i_signal_start, len(dates)),
+                frequencies=frequencies,
+                m_complex=m_complex,
+                love_numbers_model=model[0],  # Degree 2 only.
+                love_number_log_frequencies=love_number_log_frequencies,
+            )
+            corrections_to_save["_".join(("k2", model_name, "real"))] = lagrange_order4(
+                x=love_number_log_frequencies,
+                y=model.real[0],  # Degree 2 only.
+                new_x=solid_tide_frequencies,
+            )
+            corrections_to_save["_".join(("k2", model_name, "imag"))] = lagrange_order4(
+                x=love_number_log_frequencies,
+                y=model.imag[0],  # Degree 2 only.
+                new_x=solid_tide_frequencies,
+            )
+
+        save_base_model(
+            obj=corrections_to_save,
+            name=file_path.name,
+            path=file_path.parent.parent.parent.parent.joinpath("tide_models"),
+        )
+
+    except:
+
+        backup_logs_path = file_path.parent.parent.parent.parent.joinpath("backup_logs")
+        save_base_model(obj={}, name=file_path.name, path=backup_logs_path)
 
 
 def fmt(x: float) -> str:
@@ -559,14 +562,6 @@ def generate_pole_tide_models(
                 pole_tide_correction_models["C"][model_name][idx] = c_model - c_model[0]
                 pole_tide_correction_models["S"][model_name][idx] = s_model - s_model[0]
 
-    return n_parameter_values, tabs, pole_tide_correction_models
-
-
-def generate_solid_tide_models(
-    n_parameter_values: int,
-    tabs: dict[str, ndarray],
-    file_path: Path = SOLID_EARTH_NUMERICAL_MODELS_PATH.joinpath(DEFAULT_FOR_GINS_OUTPUT_DIRECTORY),
-) -> dict[str, dict[float, ndarray]]:
     """
     Build the interpolated k2 to zonal long-period tides.
     """
@@ -797,57 +792,4 @@ def save_solid_tide_corrections(
     save_base_model(obj=solid_tide_doodson_ids, name="solid_tide_doodson_ids", path=models_path)
     save_base_model(
         obj=solid_tide_frequency_values, name="solid_tide_frequency_values", path=models_path
-    )
-
-
-# TODO
-def preprocess_and_save_tide_correction_partials(
-    steady_state_signal_parameters: SteadyStateSignalParameters = DEFAULT_SIGNAL_PARAMETERS,
-    models_path: Path = POLE_MODELS_PATH,
-    pole_motion_file: str = "C01_pole_motion_time_series.txt",
-) -> None:
-    """
-    Builds and hard-codes pole tide corrections from k2 and its partials.
-    """
-
-    dates, m_1, m_2 = get_m1_m2_time_series(
-        models_path=models_path, pole_motion_file=pole_motion_file
-    )
-    mean_m_1 = mean(a=m_1[: len(m_1)])
-    mean_m_2 = mean(a=m_2[: len(m_2)])
-    i_signal_start, steady_state_dates, steady_state_m_1 = build_steady_state_regime_signal(
-        t=dates,
-        signal=m_1 - mean_m_1,
-        plateau_length=steady_state_signal_parameters.plateau_length,
-        cubic_spline_length=steady_state_signal_parameters.cubic_spline_length,
-    )
-    _, _, steady_state_m_2 = build_steady_state_regime_signal(
-        t=dates,
-        signal=m_2 - mean_m_2,
-        plateau_length=steady_state_signal_parameters.plateau_length,
-        cubic_spline_length=steady_state_signal_parameters.cubic_spline_length,
-    )
-    frequencies = fftfreq(
-        n=len(steady_state_dates), d=steady_state_dates[1] - steady_state_dates[0]
-    )
-    m_complex = fft(x=steady_state_m_1) - 1j * fft(x=steady_state_m_2)
-    n_parameter_values, tabs, pole_models = generate_pole_tide_models(
-        m_complex=m_complex,
-        i_signal=(i_signal_start, len(dates)),
-        initial_values=(m_1[0], m_2[0]),
-        frequencies=frequencies,
-    )
-    solid_models = generate_solid_tide_models(n_parameter_values=n_parameter_values, tabs=tabs)
-    save_pole_tide_corrections(
-        dates=dates,
-        tabs=tabs,
-        pole_tide_correction_models=pole_models,
-        models_path=TIDE_MODELS_PATH,
-        pole_tide_corrections_file=DEFAULT_POLE_TIDE_CORRECTION_FILE,
-    )
-    save_solid_tide_corrections(
-        tabs=tabs,
-        solid_tide_correction_models=solid_models,
-        models_path=TIDE_MODELS_PATH,
-        solid_tide_corrections_file=DEFAULT_SOLID_TIDE_CORRECTION_FILE,
     )
