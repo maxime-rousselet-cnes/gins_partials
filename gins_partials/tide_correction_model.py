@@ -254,6 +254,7 @@ def tide_correction_model_generation(
     except:
 
         backup_logs_path = file_path.parent.parent.parent.parent.joinpath("backup_logs")
+        backup_logs_path.mkdir(exists=True, parents=True)
         save_base_model(obj={}, name=file_path.name, path=backup_logs_path)
 
 
