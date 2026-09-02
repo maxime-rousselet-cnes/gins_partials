@@ -230,8 +230,8 @@ def tide_correction_model_generation(
         ):
 
             (
-                corrections_to_save["_".join(("C", model_name))],
-                corrections_to_save["_".join(("S", model_name))],
+                corrections_to_save["_".join(("C", model_name)) if model_name else "C"],
+                corrections_to_save["_".join(("S", model_name)) if model_name else "S"],
             ) = pole_motion_correction(
                 i_signal=(i_signal_start, len(dates)),
                 frequencies=frequencies,
@@ -239,12 +239,16 @@ def tide_correction_model_generation(
                 love_numbers_model=model[0],  # Degree 2 only.
                 love_number_log_frequencies=love_number_log_frequencies,
             )
-            corrections_to_save["_".join(("k2", model_name, "real"))] = lagrange_order4(
+            corrections_to_save[
+                "_".join(("k2", model_name, "real")) if model_name else "k2_real"
+            ] = lagrange_order4(
                 x=love_number_log_frequencies,
                 y=model.real[0],  # Degree 2 only.
                 new_x=solid_tide_frequencies,
             )
-            corrections_to_save["_".join(("k2", model_name, "imag"))] = lagrange_order4(
+            corrections_to_save[
+                "_".join(("k2", model_name, "imag")) if model_name else "k2_imag"
+            ] = lagrange_order4(
                 x=love_number_log_frequencies,
                 y=model.imag[0],  # Degree 2 only.
                 new_x=solid_tide_frequencies,
@@ -585,14 +589,14 @@ def hard_code_tide_correction_models(
                 - all_correction_models[correction_type][..., 0, None]
             )
 
-        elif "C_" in correction_type:
+        elif "C" in correction_type:
 
             all_correction_models[correction_type] = all_correction_models[correction_type] + (
                 -PHI_CONSTANT * (K_2_IERS.real * m_1[0] + K_2_IERS.imag * m_2[0])
                 - all_correction_models[correction_type][..., 0, None]
             )
 
-        elif "S_" in correction_type:
+        elif "S" in correction_type:
 
             all_correction_models[correction_type] = all_correction_models[correction_type] + (
                 -PHI_CONSTANT * (K_2_IERS.imag * m_1[0] + K_2_IERS.real * m_2[0])
@@ -608,7 +612,7 @@ def hard_code_tide_correction_models(
         pole_tide_correction_models={
             correction_type: correction_model.real
             for correction_type, correction_model in all_correction_models.items()
-            if "C_" in correction_type or "S_" in correction_type
+            if "C" in correction_type or "S" in correction_type
         },
         models_path=models_path,
     )
@@ -617,7 +621,7 @@ def hard_code_tide_correction_models(
         solid_tide_correction_models={
             correction_type: correction_model.real
             for correction_type, correction_model in all_correction_models.items()
-            if not ("C_" in correction_type or "S_" in correction_type)
+            if not ("C" in correction_type or "S" in correction_type)
         },
         models_path=models_path,
     )
