@@ -21,6 +21,8 @@ from alna import (
 )
 from base_models import (
     DATA_PATH,
+    BoundaryCondition,
+    Direction,
     SteadyStateSignalParameters,
     build_steady_state_regime_signal,
     lagrange_order4,
@@ -524,8 +526,11 @@ def hard_code_tide_correction_models(
     TODO.
     """
 
+    elastic = load_solid_earth_numerical_model(
+        name="PREM",
+        path=TEST_ELASTIC_INTEGRATION_PATH,
+    ).love_numbers["real"][2][0][BoundaryCondition.POTENTIAL.value][Direction.POTENTIAL.value]
     tabs, all_correction_models = load_tide_correction_models(path=path)
-
     dates, m_1, m_2 = get_m1_m2_time_series(
         models_path=models_path, pole_motion_file=pole_motion_file
     )
@@ -547,10 +552,6 @@ def hard_code_tide_correction_models(
         n=len(steady_state_dates), d=steady_state_dates[1] - steady_state_dates[0]
     )
     m_complex = fft(x=steady_state_m_1) - 1j * fft(x=steady_state_m_2)
-    elastic = load_solid_earth_numerical_model(
-        name="PREM",
-        path=TEST_ELASTIC_INTEGRATION_PATH,
-    ).love_numbers["real"][0][0]
     (
         all_correction_models["C_elastic"],
         all_correction_models["S_elastic"],
@@ -588,14 +589,14 @@ def hard_code_tide_correction_models(
 
             all_correction_models[correction_type] = all_correction_models[correction_type] + (
                 -PHI_CONSTANT * (K_2_IERS.real * m_1[0] + K_2_IERS.imag * m_2[0])
-                - all_correction_models[correction_type][..., 0]
+                - all_correction_models[correction_type][..., 0, None]
             )
 
         elif "S_" in correction_type:
 
             all_correction_models[correction_type] = all_correction_models[correction_type] + (
                 -PHI_CONSTANT * (K_2_IERS.imag * m_1[0] + K_2_IERS.real * m_2[0])
-                - all_correction_models[correction_type][..., 0]
+                - all_correction_models[correction_type][..., 0, None]
             )
 
     save_pole_tide_corrections(
@@ -758,6 +759,7 @@ def save_solid_tide_corrections(
     )
     definitions_to_hard_code.append(declaration)
     chunks_to_hard_code.append(assignment)
+    # TODO: wrong.
     model_to_fortran_variable = {
         "anelastic": "k2",
         "lam_partials": "dk2_dlam",
