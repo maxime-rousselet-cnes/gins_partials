@@ -602,9 +602,9 @@ def hard_code_tide_correction_models(
     save_pole_tide_corrections(
         dates=dates,
         lam_values=tabs[r"\alpha^{MANTLE_0}"],
-        lqm_values=tabs[r"\Delta^{MANTLE_0}"],
-        ldm_values=tabs[r"Q_\mu^{MANTLE_0})"],
-        ltm_values=tabs[r"\omega_m^{MANTLE_0}"],
+        lqm_values=tabs[r"\log_{10}Q_\mu^{MANTLE_0})"],
+        ldm_values=tabs[r"\log_{10}\Delta^{MANTLE_0}"],
+        ltm_values=tabs[r"\log_{10}\tau_m^{MANTLE_0}"],
         pole_tide_correction_models={
             correction_type: correction_model
             for correction_type, correction_model in all_correction_models.items()
