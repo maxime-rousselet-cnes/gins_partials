@@ -582,7 +582,7 @@ def hard_code_tide_correction_models(
 
             all_correction_models[correction_type] = (
                 all_correction_models[correction_type]
-                - all_correction_models[correction_type][..., 0]
+                - all_correction_models[correction_type][..., 0, None]
             )
 
         elif "C_" in correction_type:
