@@ -606,7 +606,7 @@ def hard_code_tide_correction_models(
         ldm_values=tabs[r"\log_{10}\Delta^{MANTLE_0}"],
         ltm_values=tabs[r"\log_{10}\tau_{m-inf}^{MANTLE_0}"],
         pole_tide_correction_models={
-            correction_type: correction_model
+            correction_type: correction_model.real
             for correction_type, correction_model in all_correction_models.items()
             if "C_" in correction_type or "S_" in correction_type
         },
@@ -615,7 +615,7 @@ def hard_code_tide_correction_models(
     save_solid_tide_corrections(
         tabs=tabs,
         solid_tide_correction_models={
-            correction_type: correction_model
+            correction_type: correction_model.real
             for correction_type, correction_model in all_correction_models.items()
             if not ("C_" in correction_type or "S_" in correction_type)
         },
