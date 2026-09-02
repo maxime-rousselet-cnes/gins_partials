@@ -759,27 +759,13 @@ def save_solid_tide_corrections(
     )
     definitions_to_hard_code.append(declaration)
     chunks_to_hard_code.append(assignment)
-    # TODO: wrong.
-    model_to_fortran_variable = {
-        "anelastic": "k2",
-        "lam_partials": "dk2_dlam",
-        "lqm_partials": "dk2_dlqm",
-        "ldm_partials": "dk2_dldm",
-        "ltm_partials": "dk2_dltm",
-    }
 
-    for model_name, fortran_prefix in model_to_fortran_variable.items():
+    for model_name, correction_model in solid_tide_correction_models.items():
 
-        model = asarray(solid_tide_correction_models[model_name])
+        model = asarray(correction_model)
         declaration, assignment = hard_code_fortran90(
-            variable_name=f"{fortran_prefix}_real",
+            variable_name=model_name,
             array_to_write=asarray(model.real, dtype=float),
-        )
-        definitions_to_hard_code.append(declaration)
-        chunks_to_hard_code.append(assignment)
-        declaration, assignment = hard_code_fortran90(
-            variable_name=f"{fortran_prefix}_imag",
-            array_to_write=asarray(model.imag, dtype=float),
         )
         definitions_to_hard_code.append(declaration)
         chunks_to_hard_code.append(assignment)
@@ -797,14 +783,9 @@ def save_solid_tide_corrections(
         multiline_text="".join(chunks_to_hard_code),
     )
     save_base_model(
-        obj={element: tab.real for element, tab in solid_tide_correction_models.items()},
+        obj=solid_tide_correction_models,
         path=models_path,
         name=SOLID_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME + "_real",
-    )
-    save_base_model(
-        obj={element: tab.imag for element, tab in solid_tide_correction_models.items()},
-        path=models_path,
-        name=SOLID_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME + "_imag",
     )
     save_base_model(obj=solid_tide_doodson_ids, name="solid_tide_doodson_ids", path=models_path)
     save_base_model(
