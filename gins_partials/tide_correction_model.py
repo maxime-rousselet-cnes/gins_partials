@@ -29,7 +29,19 @@ from base_models import (
     load_base_model,
     save_base_model,
 )
-from numpy import array, asarray, conjugate, flip, log, mean, ndarray, ndindex, zeros
+from numpy import (
+    array,
+    asarray,
+    asfortranarray,
+    conjugate,
+    dtype,
+    flip,
+    log,
+    mean,
+    ndarray,
+    ndindex,
+    zeros,
+)
 from scipy.fft import fft, fftfreq, ifft
 
 from .utils import (
@@ -43,6 +55,8 @@ from .utils import (
     get_m1_m2_time_series,
 )
 
+TIDE_DATA_PATH = Path("tide_binary_files").resolve()
+TIDE_DATA_PATH.mkdir(parents=True, exist_ok=True)
 LONG_TERM_HYPOTHESIS_PERIOD = 10000  # (yr).
 MAX_STATEMENT_LENGTH = 20000
 MAX_LINE_LENGTH = 6800
@@ -267,147 +281,6 @@ def tide_correction_model_generation(
         save_base_model(obj={}, name=file_path.name, path=backup_logs_path)
 
 
-def fmt(x: float) -> str:
-    """
-    Formats like +7.90710E+03.
-    """
-
-    return f"{float(x):+.5E}"
-
-
-def write_1d_slice(
-    left_hand_side: str,
-    values: list[str],
-) -> str:
-    """
-    Prepares a slice of a 1D tab to hard-code in Fortran90.
-    """
-
-    statements: list[list[str]] = []
-    current_stmt: list[str] = []
-    current_len = 0
-
-    for v in values:
-
-        token = v + ", "
-
-        if current_len + len(token) > MAX_STATEMENT_LENGTH:
-
-            statements.append(current_stmt)
-            current_stmt = [token]
-            current_len = len(token)
-
-        else:
-
-            current_stmt.append(token)
-            current_len += len(token)
-
-    if current_stmt:
-
-        statements.append(current_stmt)
-
-    result = ""
-    idx_start = 1
-
-    for stmt in statements:
-
-        lines: list[str] = []
-        current = ""
-
-        for token in stmt:
-
-            if len(current) + len(token) > MAX_LINE_LENGTH:
-
-                lines.append(current.rstrip())
-                current = token
-
-            else:
-
-                current += token
-
-        if current:
-
-            lines.append(current.rstrip())
-
-        values_str = "&\n  ".join(lines)
-        idx_end = idx_start + len(stmt) - 1
-        result += f"""  {left_hand_side}{idx_start}:{idx_end}) = (/ &
-{values_str[:-1]} /)
-"""
-        idx_start = idx_end + 1
-
-    return result
-
-
-def hard_code_fortran90(
-    variable_name: str,
-    array_to_write: ndarray,
-    float_option: bool = True,
-) -> tuple[str, str]:
-    """
-    Returns a Fortran declaration and executable assignments for a real array.
-    """
-
-    shape_iterable_string = ",".join(str(s) for s in array_to_write.shape)
-    declaration = (
-        f"  real(kind=DP), dimension({shape_iterable_string}) :: {variable_name}\n"
-        if float_option
-        else f"  integer, dimension({shape_iterable_string}) :: {variable_name}\n"
-    )
-    result = ""
-
-    if array_to_write.ndim == 1:
-
-        result += write_1d_slice(
-            left_hand_side=f"{variable_name}(",
-            values=[fmt(x) if float_option else str(int(x)) for x in array_to_write],
-        )
-
-    else:
-
-        for idx in ndindex(array_to_write.shape[:-1]):
-
-            fixed_indices = ",".join(str(i + 1) for i in idx)
-            left_hand_side = f"{variable_name}({fixed_indices},"
-            result += write_1d_slice(
-                left_hand_side=left_hand_side,
-                values=[fmt(x) if float_option else str(int(x)) for x in array_to_write[idx]],
-            )
-
-    return declaration, result
-
-
-def insert_between_markers(
-    file_path: str | Path, start_marker: str, end_marker: str, multiline_text: str
-) -> None:
-    """
-    Inserts multiline_text between two preserved markers.
-    """
-
-    path = Path(file_path)
-    content = path.read_text(encoding="utf-8")
-    start_index = content.find(start_marker)
-    end_index = content.find(end_marker)
-
-    if start_index == -1:
-
-        raise ValueError(f"Start marker not found in {path}: {start_marker}")
-
-    if end_index == -1:
-
-        raise ValueError(f"End marker not found in {path}: {end_marker}")
-
-    if start_index > end_index:
-
-        raise ValueError(f"Start marker appears after end marker in {path}")
-
-    insert_start = start_index + len(start_marker)
-    updated_content = (
-        content[:insert_start] + "\n" + multiline_text.strip("\n") + "\n" + content[end_index:]
-    )
-    path.write_text(updated_content, encoding="utf-8")
-
-
 def interpolate_love_number_grid_to_solid_tides(
     model_grid: ndarray,
     love_number_log_frequencies: ndarray,
@@ -619,7 +492,6 @@ def hard_code_tide_correction_models(
         to_save=to_save,
     )
     save_solid_tide_corrections(
-        tabs=tabs,
         solid_tide_correction_models={
             correction_type: correction_model.real
             for correction_type, correction_model in all_correction_models.items()
@@ -630,6 +502,27 @@ def hard_code_tide_correction_models(
     )
 
 
+def write_binary_fortran(
+    path: Path,
+    array: ndarray,
+    *,
+    dtype: dtype,
+) -> None:
+    """
+    Writes a NumPy array as a raw binary stream compatible with Fortran:
+
+        open(..., form='unformatted', access='stream')
+        read(unit) array
+
+    The array is serialized in Fortran/column-major order.
+    """
+
+    array = asarray(array, dtype=dtype)
+    array = array.astype(dtype.newbyteorder("<"), copy=False)
+    array = asfortranarray(array)
+    array.tofile(path)
+
+
 def save_pole_tide_corrections(
     dates: ndarray,
     lam_values: ndarray,
@@ -638,7 +531,6 @@ def save_pole_tide_corrections(
     ltm_values: ndarray,
     pole_tide_correction_models: dict[str, ndarray],
     models_path: Path = TIDE_MODELS_PATH,
-    pole_tide_corrections_file: Path = DEFAULT_POLE_TIDE_CORRECTION_FILE,
     to_save: bool = False,
 ) -> None:
     """
@@ -649,57 +541,35 @@ def save_pole_tide_corrections(
     model_mask = (model_jjul_dates >= DATA_DATES_LOWER_BOUND - DATA_DATES_MARGIN) & (
         model_jjul_dates <= DATA_DATES_UPPER_BOUND + DATA_DATES_MARGIN
     )
-    definitions_to_hard_code = [
-        "  ! Pole tide corrections generated from k2(lam, lqm, ldm, ltm).\n",
-        "  ! Partial arrays are derivatives wrt lam, lqm, ldm, ltm.\n",
-        f"  integer :: n_dates = {len(model_jjul_dates[model_mask])}\n",
-        f"  integer :: n_lam = {len(lam_values)}\n",
-        f"  integer :: n_lqm = {len(lqm_values)}\n",
-        f"  integer :: n_ldm = {len(ldm_values)}\n",
-        f"  integer :: n_ltm = {len(ltm_values)}\n",
-    ]
-    chunks_to_hard_code: list[str] = []
+    grid_arrays = {
+        "jjul_dates": asarray(model_jjul_dates[model_mask], dtype=dtype("<f8")),
+        "lam_values": asarray(lam_values, dtype=dtype("<f8")),
+        "lqm_values": asarray(lqm_values, dtype=dtype("<f8")),
+        "ldm_values": asarray(ldm_values, dtype=dtype("<f8")),
+        "ltm_values": asarray(ltm_values, dtype=dtype("<f8")),
+    }
 
-    for variable_name, array_to_write in {
-        "jjul_dates": model_jjul_dates[model_mask],
-        "lam_values": lam_values,
-        "lqm_values": lqm_values,
-        "ldm_values": ldm_values,
-        "ltm_values": ltm_values,
-    }.items():
+    for name, array in grid_arrays.items():
 
-        declaration, assignment = hard_code_fortran90(
-            variable_name=variable_name, array_to_write=array_to_write
+        write_binary_fortran(
+            TIDE_DATA_PATH / f"{name}.bin",
+            array,
+            dtype=dtype("<f8"),
         )
-        definitions_to_hard_code.append(declaration)
-        chunks_to_hard_code.append(assignment)
 
     for model_name, model in pole_tide_correction_models.items():
 
-        # The IERS reference is saved to disk but not hard-coded in Fortran.
         if "IERS" in model_name:
 
             continue
 
-        declaration, assignment = hard_code_fortran90(
-            variable_name=model_name,
-            array_to_write=asarray(model, dtype=float)[..., model_mask],
-        )
-        definitions_to_hard_code.append(declaration)
-        chunks_to_hard_code.append(assignment)
+        array = asarray(model, dtype=dtype("<f4"))[..., model_mask]
 
-    insert_between_markers(
-        file_path=pole_tide_corrections_file,
-        start_marker=START_DECL,
-        end_marker=END_DECL,
-        multiline_text="".join(definitions_to_hard_code),
-    )
-    insert_between_markers(
-        file_path=pole_tide_corrections_file,
-        start_marker=START_VALUES,
-        end_marker=END_VALUES,
-        multiline_text="".join(chunks_to_hard_code),
-    )
+        write_binary_fortran(
+            TIDE_DATA_PATH / f"{model_name}.bin",
+            array,
+            dtype=dtype("<f4"),
+        )
 
     if to_save:
 
@@ -717,10 +587,8 @@ def save_pole_tide_corrections(
 
 
 def save_solid_tide_corrections(
-    tabs: dict[str, ndarray],
     solid_tide_correction_models: dict[str, ndarray],
     models_path: Path = TIDE_MODELS_PATH,
-    solid_tide_corrections_file: Path = DEFAULT_SOLID_TIDE_CORRECTION_FILE,
     to_save: bool = False,
 ) -> None:
     """
@@ -732,77 +600,20 @@ def save_solid_tide_corrections(
     The solid_tide_index axis follows IERS_LONG_PERIOD_ZONAL_TIDES.
     """
 
-    lam_values, lqm_values, ldm_values, ltm_values = tuple(tabs.values())
-    solid_tide_doodson_ids = array(
-        object=[doodson_id for doodson_id, _, _, _ in IERS_LONG_PERIOD_ZONAL_TIDES],
-        dtype=int,
-    )
-    solid_tide_frequency_values = tide_angular_frequencies_to_cycle_per_yr()
-    definitions_to_hard_code = [
-        "  ! Solid tide k20 generated from k2(lam, ldm, ldm, ltm, tide).\n",
-        "  ! Frequency interpolation is done at the IERS Table 6.5b long-period zonal tides.\n",
-        f"  integer :: n_lam = {len(lam_values)}\n",
-        f"  integer :: n_lqm = {len(lqm_values)}\n",
-        f"  integer :: n_ldm = {len(ldm_values)}\n",
-        f"  integer :: n_ltm = {len(ltm_values)}\n",
-        f"  integer :: n_solid_tides = {len(solid_tide_doodson_ids)}\n",
-    ]
-    chunks_to_hard_code: list[str] = []
-    real_arrays = {
-        "lam_values": lam_values,
-        "lqm_values": lqm_values,
-        "ldm_values": ldm_values,
-        "ltm_values": ltm_values,
-    }
+    for variable_name, array_to_write in solid_tide_correction_models.items():
 
-    for variable_name, array_to_write in real_arrays.items():
+        array = asarray(array_to_write, dtype=dtype("<f4"))
 
-        declaration, assignment = hard_code_fortran90(
-            variable_name=variable_name,
-            array_to_write=asarray(array_to_write, dtype=float),
+        write_binary_fortran(
+            TIDE_DATA_PATH / f"{variable_name}.bin",
+            array,
+            dtype=dtype("<f4"),
         )
-        definitions_to_hard_code.append(declaration)
-        chunks_to_hard_code.append(assignment)
-
-    declaration, assignment = hard_code_fortran90(
-        variable_name="solid_tide_doodson_ids",
-        array_to_write=solid_tide_doodson_ids,
-        float_option=False,
-    )
-    definitions_to_hard_code.append(declaration)
-    chunks_to_hard_code.append(assignment)
-
-    for model_name, correction_model in solid_tide_correction_models.items():
-
-        model = asarray(correction_model)
-        declaration, assignment = hard_code_fortran90(
-            variable_name=model_name,
-            array_to_write=asarray(model.real, dtype=float),
-        )
-        definitions_to_hard_code.append(declaration)
-        chunks_to_hard_code.append(assignment)
-
-    insert_between_markers(
-        file_path=solid_tide_corrections_file,
-        start_marker=START_DECL,
-        end_marker=END_DECL,
-        multiline_text="".join(definitions_to_hard_code),
-    )
-    insert_between_markers(
-        file_path=solid_tide_corrections_file,
-        start_marker=START_VALUES,
-        end_marker=END_VALUES,
-        multiline_text="".join(chunks_to_hard_code),
-    )
 
     if to_save:
 
         save_base_model(
             obj=solid_tide_correction_models,
             path=models_path,
-            name=SOLID_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME + "_real",
-        )
-        save_base_model(obj=solid_tide_doodson_ids, name="solid_tide_doodson_ids", path=models_path)
-        save_base_model(
-            obj=solid_tide_frequency_values, name="solid_tide_frequency_values", path=models_path
+            name=SOLID_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
         )
