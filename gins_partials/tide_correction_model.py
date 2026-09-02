@@ -525,6 +525,7 @@ def hard_code_tide_correction_models(
     steady_state_signal_parameters: SteadyStateSignalParameters = DEFAULT_SIGNAL_PARAMETERS,
     models_path: Path = POLE_MODELS_PATH,
     pole_motion_file: str = "C01_pole_motion_time_series.txt",
+    to_save: bool = False,
 ) -> None:
     """
     TODO.
@@ -615,6 +616,7 @@ def hard_code_tide_correction_models(
             if "C" in correction_type or "S" in correction_type
         },
         models_path=models_path,
+        to_save=to_save,
     )
     save_solid_tide_corrections(
         tabs=tabs,
@@ -624,6 +626,7 @@ def hard_code_tide_correction_models(
             if not ("C" in correction_type or "S" in correction_type)
         },
         models_path=models_path,
+        to_save=to_save,
     )
 
 
@@ -636,6 +639,7 @@ def save_pole_tide_corrections(
     pole_tide_correction_models: dict[str, ndarray],
     models_path: Path = TIDE_MODELS_PATH,
     pole_tide_corrections_file: Path = DEFAULT_POLE_TIDE_CORRECTION_FILE,
+    to_save: bool = False,
 ) -> None:
     """
     Hard-codes the pole tide corrections and their partials in f_marpolsol.f90.
@@ -696,17 +700,20 @@ def save_pole_tide_corrections(
         end_marker=END_VALUES,
         multiline_text="".join(chunks_to_hard_code),
     )
-    save_base_model(
-        obj=pole_tide_correction_models,
-        path=models_path,
-        name=POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
-    )
-    save_base_model(obj=model_jjul_dates, name="jjul_dates", path=models_path)
-    save_base_model(obj=model_mask, name="model_mask", path=models_path)
-    save_base_model(obj=lam_values, name="lam_values", path=models_path)
-    save_base_model(obj=lqm_values, name="lqm_values", path=models_path)
-    save_base_model(obj=ldm_values, name="ldm_values", path=models_path)
-    save_base_model(obj=ltm_values, name="ltm_values", path=models_path)
+
+    if to_save:
+
+        save_base_model(
+            obj=pole_tide_correction_models,
+            path=models_path,
+            name=POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
+        )
+        save_base_model(obj=model_jjul_dates, name="jjul_dates", path=models_path)
+        save_base_model(obj=model_mask, name="model_mask", path=models_path)
+        save_base_model(obj=lam_values, name="lam_values", path=models_path)
+        save_base_model(obj=lqm_values, name="lqm_values", path=models_path)
+        save_base_model(obj=ldm_values, name="ldm_values", path=models_path)
+        save_base_model(obj=ltm_values, name="ltm_values", path=models_path)
 
 
 def save_solid_tide_corrections(
@@ -714,6 +721,7 @@ def save_solid_tide_corrections(
     solid_tide_correction_models: dict[str, ndarray],
     models_path: Path = TIDE_MODELS_PATH,
     solid_tide_corrections_file: Path = DEFAULT_SOLID_TIDE_CORRECTION_FILE,
+    to_save: bool = False,
 ) -> None:
     """
     Hard-codes interpolated k20 values and their partials in f_marsol.f90.
@@ -786,12 +794,15 @@ def save_solid_tide_corrections(
         end_marker=END_VALUES,
         multiline_text="".join(chunks_to_hard_code),
     )
-    save_base_model(
-        obj=solid_tide_correction_models,
-        path=models_path,
-        name=SOLID_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME + "_real",
-    )
-    save_base_model(obj=solid_tide_doodson_ids, name="solid_tide_doodson_ids", path=models_path)
-    save_base_model(
-        obj=solid_tide_frequency_values, name="solid_tide_frequency_values", path=models_path
-    )
+
+    if to_save:
+
+        save_base_model(
+            obj=solid_tide_correction_models,
+            path=models_path,
+            name=SOLID_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME + "_real",
+        )
+        save_base_model(obj=solid_tide_doodson_ids, name="solid_tide_doodson_ids", path=models_path)
+        save_base_model(
+            obj=solid_tide_frequency_values, name="solid_tide_frequency_values", path=models_path
+        )
