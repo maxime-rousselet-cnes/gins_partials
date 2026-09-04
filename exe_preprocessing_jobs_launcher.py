@@ -10,6 +10,7 @@ from subprocess import CalledProcessError, run
 from numpy.random import shuffle
 
 from gins_partials import quote_slurm_arg
+from gins_partials.tide_correction_model import TIDE_MODELS_PATH
 
 # ---------------------------------------------------------------------------
 # Hard-coded job configuration.
@@ -120,9 +121,7 @@ def submit_slurm(workdir: Path = Path("."), n_jobs_max: int = 500) -> None:
 
     logs_dir = workdir.joinpath("logs")
     logs_dir.mkdir(parents=True, exist_ok=True)
-    Path(MODELS_PATH).parent.parent.parent.parent.joinpath("tide_models").mkdir(
-        parents=True, exist_ok=True
-    )
+    TIDE_MODELS_PATH.mkdir(parents=True, exist_ok=True)
     slurm_file = make_slurm_script(workdir=workdir)
     n_jobs = len(list(Path(MODELS_PATH).glob("*"))) - 1
     array_spec = f"1-{n_jobs}%{n_jobs_max}"
