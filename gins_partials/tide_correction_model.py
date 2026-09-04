@@ -43,6 +43,10 @@ from .utils import (
     get_m1_m2_time_series,
 )
 
+TIDE_MODELS_PATH = Path(
+    "/work/GRGS/users/rousselm/public/tide_models"
+)  # Path(MODELS_PATH).parent.parent.parent.parent.joinpath("tide_models")
+
 TIDE_DATA_PATH = Path("tide_binary_files").resolve()
 TIDE_DATA_PATH.mkdir(parents=True, exist_ok=True)
 LONG_TERM_HYPOTHESIS_PERIOD = 10000  # (yr).
@@ -189,6 +193,7 @@ def tide_correction_model_generation(
     steady_state_signal_parameters: SteadyStateSignalParameters = DEFAULT_SIGNAL_PARAMETERS,
     models_path: Path = POLE_MODELS_PATH,
     pole_motion_file: str = "C01_pole_motion_time_series.txt",
+    tide_models_path: Path = Path,
 ) -> None:
     """
     Gets Love numbers for a given rheological model, generates the corresponding pole tide and
@@ -258,7 +263,7 @@ def tide_correction_model_generation(
         save_base_model(
             obj=corrections_to_save,
             name=file_path.name,
-            path=file_path.parent.parent.parent.parent.joinpath("tide_models"),
+            path=tide_models_path,
         )
 
     except:
@@ -302,7 +307,7 @@ def interpolate_love_number_grid_to_solid_tides(
 
 
 def load_tide_correction_models(
-    path: Path = DATA_PATH.joinpath("tide_models"),
+    path: Path = TIDE_MODELS_PATH,
 ) -> tuple[dict[str, ndarray], dict[str, ndarray]]:
     """
     TODO: describe.
@@ -381,7 +386,7 @@ def load_tide_correction_models(
 
 
 def hard_code_tide_correction_models(
-    path: Path = DATA_PATH.joinpath("tide_models"),
+    path: Path = TIDE_MODELS_PATH,
     steady_state_signal_parameters: SteadyStateSignalParameters = DEFAULT_SIGNAL_PARAMETERS,
     models_path: Path = POLE_MODELS_PATH,
     pole_motion_file: str = "C01_pole_motion_time_series.txt",
