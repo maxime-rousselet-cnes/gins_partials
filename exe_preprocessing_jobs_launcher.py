@@ -7,6 +7,8 @@ from pathlib import Path
 from shlex import quote
 from subprocess import CalledProcessError, run
 
+from numpy.random import shuffle
+
 from gins_partials import quote_slurm_arg
 
 # ---------------------------------------------------------------------------
@@ -81,7 +83,10 @@ source {quote(str(Path(DEFAULT_CLUSTER_VENV) / "bin" / "activate"))}
     task_commands = []
     task_id = 0
 
-    for file_path in Path(MODELS_PATH).glob("*"):
+    file_paths = list(Path(MODELS_PATH).glob("*"))
+    shuffle(file_paths)
+
+    for file_path in file_paths:
 
         if "periods" in file_path.name:
 
