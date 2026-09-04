@@ -124,7 +124,7 @@ def submit_slurm(workdir: Path = Path("."), n_jobs_max: int = 500) -> None:
     logs_dir.mkdir(parents=True, exist_ok=True)
     TIDE_MODELS_PATH.mkdir(parents=True, exist_ok=True)
     slurm_file = make_slurm_script(workdir=workdir)
-    n_jobs = len(list(Path(MODELS_PATH).glob("*"))) - 1
+    n_jobs = len(list(Path(MODELS_PATH).glob("*"))) - 1 - len(list(TIDE_MODELS_PATH.glob("*")))
     array_spec = f"1-{n_jobs}%{n_jobs_max}"
 
     cmd = [
