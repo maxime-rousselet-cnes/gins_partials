@@ -85,11 +85,12 @@ source {quote(str(Path(DEFAULT_CLUSTER_VENV) / "bin" / "activate"))}
     task_id = 0
 
     file_paths = list(Path(MODELS_PATH).glob("*"))
+    already_done = [file.name[:-5] for file in TIDE_MODELS_PATH.glob("*")]
     shuffle(file_paths)
 
     for file_path in file_paths:
 
-        if "periods" in file_path.name:
+        if "periods" in file_path.name or file_path.name in already_done:
 
             continue
 
