@@ -29,19 +29,7 @@ from base_models import (
     load_base_model,
     save_base_model,
 )
-from numpy import (
-    array,
-    asarray,
-    asfortranarray,
-    conjugate,
-    dtype,
-    flip,
-    log,
-    mean,
-    ndarray,
-    ndindex,
-    zeros,
-)
+from numpy import array, asarray, conjugate, dtype, flip, log, mean, ndarray, ndindex, zeros
 from scipy.fft import fft, fftfreq, ifft
 
 from .utils import (
@@ -448,6 +436,11 @@ def hard_code_tide_correction_models(
         m_complex=m_complex,
         love_numbers_model=K_2_IERS,
     )
+    x_0 = m_1[0]
+    y_0 = m_2[0]  # This is y_p - y_s, not IERS m_2.
+
+    c_21_reference = -PHI_CONSTANT * (K_2_IERS.real * x_0 - K_2_IERS.imag * y_0)
+    s_21_reference = PHI_CONSTANT * (K_2_IERS.real * y_0 + K_2_IERS.imag * x_0)
 
     for correction_type in all_correction_models.keys():
 
@@ -456,25 +449,22 @@ def hard_code_tide_correction_models(
             or "lqm" in correction_type
             or "ldm" in correction_type
             or "ltm" in correction_type
-        ):
+        ) and "k" not in correction_type:
 
-            all_correction_models[correction_type] = (
-                all_correction_models[correction_type]
-                - all_correction_models[correction_type][..., 0, None]
+            all_correction_models[correction_type] -= all_correction_models[correction_type][
+                ..., :1
+            ]
+
+        elif correction_type.startswith("C"):
+
+            all_correction_models[correction_type] += (
+                c_21_reference - all_correction_models[correction_type][..., :1]
             )
 
-        elif "C" in correction_type:
+        elif correction_type.startswith("S"):
 
-            all_correction_models[correction_type] = all_correction_models[correction_type] + (
-                -PHI_CONSTANT * (K_2_IERS.real * m_1[0] + K_2_IERS.imag * m_2[0])
-                - all_correction_models[correction_type][..., 0, None]
-            )
-
-        elif "S" in correction_type:
-
-            all_correction_models[correction_type] = all_correction_models[correction_type] + (
-                -PHI_CONSTANT * (K_2_IERS.imag * m_1[0] + K_2_IERS.real * m_2[0])
-                - all_correction_models[correction_type][..., 0, None]
+            all_correction_models[correction_type] += (
+                s_21_reference - all_correction_models[correction_type][..., :1]
             )
 
     save_pole_tide_corrections(
@@ -520,9 +510,7 @@ def write_binary_fortran(
     """
 
     array = asarray(array, dtype=dtype)
-    array = array.astype(dtype.newbyteorder("<"), copy=False)
-    array = asfortranarray(array)
-    array.tofile(path)
+    array.ravel(order="F").tofile(path)
 
 
 def save_pole_tide_corrections(

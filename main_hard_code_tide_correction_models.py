@@ -6,8 +6,25 @@ and pole tide deformation correction. Saves all relevant information as fortran9
 arrays.
 """
 
+import argparse
+
 from gins_partials import hard_code_tide_correction_models
 
 if __name__ == "__main__":
 
-    hard_code_tide_correction_models(to_encode=False, to_save=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--encode",
+        action="store_true",
+        help="Enable encoding",
+    )
+    parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Enable encoding",
+    )
+    args = parser.parse_args()
+    hard_code_tide_correction_models(
+        to_encode=args.encode,
+        to_save=args.save,
+    )
