@@ -45,7 +45,7 @@ from .utils import (
 
 TIDE_MODELS_PATH = Path(
     "/work/GRGS/users/rousselm/public/tide_models"
-)  # Path(MODELS_PATH).parent.parent.parent.parent.joinpath("tide_models")
+).resolve()  # Path(MODELS_PATH).parent.parent.parent.parent.joinpath("tide_models")
 
 TIDE_DATA_PATH = Path("tide_binary_files").resolve()
 TIDE_DATA_PATH.mkdir(parents=True, exist_ok=True)
@@ -193,7 +193,7 @@ def tide_correction_model_generation(
     steady_state_signal_parameters: SteadyStateSignalParameters = DEFAULT_SIGNAL_PARAMETERS,
     models_path: Path = POLE_MODELS_PATH,
     pole_motion_file: str = "C01_pole_motion_time_series.txt",
-    tide_models_path: Path = Path,
+    tide_models_path: Path = TIDE_MODELS_PATH,
 ) -> None:
     """
     Gets Love numbers for a given rheological model, generates the corresponding pole tide and
