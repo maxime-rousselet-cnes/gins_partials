@@ -12,5 +12,4 @@ UNPLOT = [plot_pole_motion, plot_pole_tide_models]
 
 if __name__ == "__main__":
 
-    plot_pole_tide_models()
     compare_acceleration_partials_to_finite_differences()

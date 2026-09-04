@@ -10,4 +10,4 @@ from gins_partials import hard_code_tide_correction_models
 
 if __name__ == "__main__":
 
-    hard_code_tide_correction_models()
+    hard_code_tide_correction_models(to_encode=False, to_save=True)

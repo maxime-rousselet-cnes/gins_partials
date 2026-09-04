@@ -23,10 +23,10 @@ def read_for_partials(
 
     outputs = {
         "acc": [],
-        "lam": [],
-        "lqm": [],
-        "ldm": [],
-        "ltm": [],
+        "local_lam": [],
+        "local_lqm": [],
+        "local_ldm": [],
+        "local_ltm": [],
     }
 
     current_key = None
@@ -56,6 +56,10 @@ def read_for_partials(
 
             elif key in outputs:
 
+                if key == "local_ldm" and len(outputs["local_ldm"]) == len(outputs["local_lqm"]):
+
+                    key = "local_lqm"
+
                 current_key = key
                 current_values = [float(value) for value in fields[1:]]
 
@@ -72,8 +76,8 @@ def read_for_partials(
     return (
         asarray(epochs),
         asarray(outputs["acc"]),
-        asarray(outputs["lam"]),
-        asarray(outputs["lqm"]),
-        asarray(outputs["ldm"]),
-        asarray(outputs["ltm"]),
+        asarray(outputs["local_lam"]),
+        asarray(outputs["local_lqm"]),
+        asarray(outputs["local_ldm"]),
+        asarray(outputs["local_ltm"]),
     )

@@ -15,7 +15,6 @@ from .listing_getters import read_for_partials
 from .tide_correction_model import (
     POLE_MODELS_PATH,
     POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
-    TIDE_MODELS_PATH,
     dates_to_jjul_dates,
 )
 from .utils import get_m1_m2_time_series
@@ -25,12 +24,11 @@ GINS_ARC_MONITORING_START_JJUL = 25080
 GINS_ARC_MONITORING_END_JJUL = 25110
 GINS_ARC_MONITORING_JJUL_MARGIN = 30
 DEFAULT_MODEL_VALUES_TO_PLOT = [
-    (0.1, 400, -0.5, 4),
-    (0.25, 400, -0.5, 3.51),
-    (0.2, 400, -0.5, 3.51),
-    (0.25, 300, -0.5, 3.51),
-    (0.25, 400, -0.1, 3.51),
-    (0.25, 400, -0.5, 4),
+    (0.25, 3.5, -0.9, 3.51),
+    (0.2, 3.5, -0.9, 3.51),
+    (0.25, 4, -0.9, 3.51),
+    (0.25, 3.5, -0.5, 3.51),
+    (0.25, 3.5, -0.9, 4),
 ]
 
 
@@ -226,7 +224,7 @@ def plot_pole_tide_models(
     # TODO: redo using new save convention.
     path: Path = Path("."),
     file: str = "gins_listing",
-    tide_models_path: Path = TIDE_MODELS_PATH,
+    tide_models_path: Path = POLE_MODELS_PATH,
     pole_tide_file: str = POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
     model_values_to_plot: Optional[list[tuple[float, float, float, float]]] = None,
 ) -> None:
@@ -278,21 +276,23 @@ def plot_pole_tide_models(
         sub_diurnal_correction = gins_model[component] - lagrange_order4(
             x=jjul_dates,
             y=array(
-                object=pole_tide_correction_models[component]["elastic"],
+                object=pole_tide_correction_models[component + "_elastic"],
                 dtype=float,
             )[mask],
             new_x=gins_model["dates"],
         )
+        """
         ax.scatter(
             gins_model["dates"],
             lagrange_order4(
                 x=jjul_dates,
-                y=array(object=pole_tide_correction_models[component]["IERS"], dtype=float)[mask],
+                y=array(object=pole_tide_correction_models[component + "_IERS"], dtype=float)[mask],
                 new_x=gins_model["dates"],
             )
             + sub_diurnal_correction,
             label="IERS",
         )
+        """
 
         for lam, lqm, ldm, ltm in model_values_to_plot:
 
@@ -311,7 +311,13 @@ def plot_pole_tide_models(
                         ltm=ltm,
                         jjul_dates=jjul_dates,
                         pole_tide_correction_model=array(
-                            object=pole_tide_correction_models[component]["anelastic"],
+                            object=pole_tide_correction_models[
+                                (
+                                    component.replace("__", "_")
+                                    if component in pole_tide_correction_models
+                                    else component + "_"
+                                )
+                            ],
                             dtype=float,
                         )[:, :, :, :, mask],
                     ),
@@ -329,12 +335,15 @@ def plot_pole_tide_models(
     save_figure(figure=figure, figure_title="pole_tide_models")
 
 
-REFERENCE_PARAMETER_VALUES = {"lam": 0.1, "lqm": 400, "ldm": -0.5, "ltm": 3.5}
+REFERENCE_PARAMETER_VALUES = {"lam": 0.1, "lqm": 3.5, "ldm": -0.9, "ltm": 3.5}
+
+JUMPER = 10
+JJUL_MAX_FIGURE = 24970.5
 
 
 def compare_acceleration_partials_to_finite_differences(
     d_parameter: float = 0.01,
-    satellite: str = "ajisai",
+    satellite: str = "starlette",
 ) -> None:
     """
     Partial derivatives validation figure for a single arc at a single parameter value.
@@ -345,31 +354,33 @@ def compare_acceleration_partials_to_finite_differences(
     )
     _, acceleration_lam_plus_d_lam, _, _, _, _ = read_for_partials(
         filename=f"rheology_{satellite}_checkup_lam_plus_" + str(d_parameter),
-        parameter_index=1,
-        parameter_value=REFERENCE_PARAMETER_VALUES["lam"] + d_parameter,
     )
     _, acceleration_lqm_plus_d_lqm, _, _, _, _ = read_for_partials(
-        filename=f"rheology_{satellite}_checkup_lqm_plus_" + str(100 * d_parameter),
-        parameter_index=2,
-        parameter_value=REFERENCE_PARAMETER_VALUES["lqm"] + 100 * d_parameter,
+        filename=f"rheology_{satellite}_checkup_lqm_plus_" + str(d_parameter),
     )
     _, acceleration_ldm_plus_d_ldm, _, _, _, _ = read_for_partials(
         filename=f"rheology_{satellite}_checkup_ldm_plus_" + str(d_parameter),
-        parameter_index=3,
-        parameter_value=REFERENCE_PARAMETER_VALUES["lam"] + d_parameter,
     )
     _, acceleration_ltm_plus_d_ltm, _, _, _, _ = read_for_partials(
         filename=f"rheology_{satellite}_checkup_ltm_plus_" + str(d_parameter),
-        parameter_index=4,
-        parameter_value=REFERENCE_PARAMETER_VALUES["ltm"] + d_parameter,
     )
-    lam_finite_difference = (acceleration_lam_plus_d_lam - acceleration) / d_parameter
-    lqm_finite_difference = (acceleration_lqm_plus_d_lqm - acceleration) / (100 * d_parameter)
-    ldm_finite_difference = (acceleration_ldm_plus_d_ldm - acceleration) / d_parameter
-    ltm_finite_difference = (acceleration_ltm_plus_d_ltm - acceleration) / d_parameter
+    acceleration = acceleration[epochs <= JJUL_MAX_FIGURE]
+    lam_formal = lam_formal[epochs <= JJUL_MAX_FIGURE]
+    lqm_formal = lqm_formal[epochs <= JJUL_MAX_FIGURE]
+    ldm_formal = ldm_formal[epochs <= JJUL_MAX_FIGURE]
+    ltm_formal = ltm_formal[epochs <= JJUL_MAX_FIGURE]
+    acceleration_lam_plus_d_lam = acceleration_lam_plus_d_lam[epochs <= JJUL_MAX_FIGURE]
+    acceleration_lqm_plus_d_lqm = acceleration_lqm_plus_d_lqm[epochs <= JJUL_MAX_FIGURE]
+    acceleration_ldm_plus_d_ldm = acceleration_ldm_plus_d_ldm[epochs <= JJUL_MAX_FIGURE]
+    acceleration_ltm_plus_d_ltm = acceleration_ltm_plus_d_ltm[epochs <= JJUL_MAX_FIGURE]
+    epochs = epochs[epochs <= JJUL_MAX_FIGURE]
+    lam_finite_difference = 1e-2 * (acceleration_lam_plus_d_lam - acceleration) / d_parameter
+    lqm_finite_difference = 1e-2 * (acceleration_lqm_plus_d_lqm - acceleration) / d_parameter
+    ldm_finite_difference = 1e-2 * (acceleration_ldm_plus_d_ldm - acceleration) / d_parameter
+    ltm_finite_difference = 1e-2 * (acceleration_ltm_plus_d_ltm - acceleration) / d_parameter
 
     axes: Iterable[Iterable[Axes]]
-    figure, axes = subplots(3, 3, figsize=(12, 10), sharex=True)
+    figure, axes = subplots(3, 4, figsize=(18, 12), sharex=True)
 
     for (i, ax_line), component in zip(enumerate(axes), ["X", "Y", "Z"]):
 
@@ -382,15 +393,15 @@ def compare_acceleration_partials_to_finite_differences(
             if "alpha" in parameter:
 
                 ax.scatter(
-                    epochs,
-                    lam_formal[:, i],
+                    epochs[::JUMPER],
+                    lam_formal[::JUMPER, i],
                     c="b",
                     marker="x",
                     label="formal" if i == 0 else None,
                 )
                 ax.scatter(
-                    epochs,
-                    lam_finite_difference[:, i],
+                    epochs[::JUMPER],
+                    lam_finite_difference[::JUMPER, i],
                     c="b",
                     marker="o",
                     label="finite differences" if i == 0 else None,
@@ -399,15 +410,15 @@ def compare_acceleration_partials_to_finite_differences(
             elif "Q" in parameter:
 
                 ax.scatter(
-                    epochs,
-                    lqm_formal[:, i],
+                    epochs[::JUMPER],
+                    lqm_formal[::JUMPER, i],
                     c="orange",
                     marker="x",
                     label="formal" if i == 0 else None,
                 )
                 ax.scatter(
-                    epochs,
-                    lqm_finite_difference[:, i],
+                    epochs[::JUMPER],
+                    lqm_finite_difference[::JUMPER, i],
                     c="orange",
                     marker="o",
                     label="finite differences" if i == 0 else None,
@@ -415,16 +426,16 @@ def compare_acceleration_partials_to_finite_differences(
             elif "elta" in parameter:
 
                 ax.scatter(
-                    epochs,
-                    ldm_formal[:, i],
-                    c="orange",
+                    epochs[::JUMPER],
+                    ldm_formal[::JUMPER, i],
+                    c="green",
                     marker="x",
                     label="formal" if i == 0 else None,
                 )
                 ax.scatter(
-                    epochs,
-                    ldm_finite_difference[:, i],
-                    c="orange",
+                    epochs[::JUMPER],
+                    ldm_finite_difference[::JUMPER, i],
+                    c="green",
                     marker="o",
                     label="finite differences" if i == 0 else None,
                 )
@@ -432,16 +443,16 @@ def compare_acceleration_partials_to_finite_differences(
             else:
 
                 ax.scatter(
-                    epochs,
-                    ltm_formal[:, i],
-                    c="g",
+                    epochs[::JUMPER],
+                    ltm_formal[::JUMPER, i],
+                    c="red",
                     marker="x",
                     label="formal" if i == 0 else None,
                 )
                 ax.scatter(
-                    epochs,
-                    ltm_finite_difference[:, i],
-                    c="g",
+                    epochs[::JUMPER],
+                    ltm_finite_difference[::JUMPER, i],
+                    c="red",
                     marker="o",
                     label="finite differences" if i == 0 else None,
                 )
@@ -460,7 +471,7 @@ def compare_acceleration_partials_to_finite_differences(
 
     figure.suptitle("Finite difference comparison to formal partials " + str(satellite))
     ax: Axes = axes[0][0]
-    ax.set_xlim(24970, 24970.5)
+    ax.set_xlim(24970, JJUL_MAX_FIGURE)
     tight_layout()
     save_figure(figure=figure, figure_title="Acceleration_partials")
     show()

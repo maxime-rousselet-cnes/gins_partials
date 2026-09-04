@@ -67,7 +67,6 @@ DEFAULT_SOLID_TIDE_CORRECTION_FILE = ROOT_PATH.parent.parent.joinpath(
     "gin/sub/obelix/src/f_marsol.f90"
 ).resolve()
 POLE_MODELS_PATH = DATA_PATH.joinpath("pole")
-TIDE_MODELS_PATH = DATA_PATH.joinpath("TIDE")
 DEFAULT_SIGNAL_PARAMETERS = SteadyStateSignalParameters()
 POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME = "pole_tide_correction_models"
 SOLID_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME = "solid_tide_correction_models"
@@ -399,6 +398,7 @@ def hard_code_tide_correction_models(
     models_path: Path = POLE_MODELS_PATH,
     pole_motion_file: str = "C01_pole_motion_time_series.txt",
     to_save: bool = False,
+    to_encode: bool = False,
 ) -> None:
     """
     TODO.
@@ -490,6 +490,7 @@ def hard_code_tide_correction_models(
         },
         models_path=models_path,
         to_save=to_save,
+        to_encode=to_encode,
     )
     save_solid_tide_corrections(
         solid_tide_correction_models={
@@ -499,6 +500,7 @@ def hard_code_tide_correction_models(
         },
         models_path=models_path,
         to_save=to_save,
+        to_encode=to_encode,
     )
 
 
@@ -530,8 +532,9 @@ def save_pole_tide_corrections(
     ldm_values: ndarray,
     ltm_values: ndarray,
     pole_tide_correction_models: dict[str, ndarray],
-    models_path: Path = TIDE_MODELS_PATH,
+    models_path: Path = POLE_MODELS_PATH,
     to_save: bool = False,
+    to_encode: bool = False,
 ) -> None:
     """
     Hard-codes the pole tide corrections and their partials in f_marpolsol.f90.
@@ -549,27 +552,29 @@ def save_pole_tide_corrections(
         "ltm_values": asarray(ltm_values, dtype=dtype("<f8")),
     }
 
-    for name, array in grid_arrays.items():
+    if to_encode:
 
-        write_binary_fortran(
-            TIDE_DATA_PATH / f"{name}.bin",
-            array,
-            dtype=dtype("<f8"),
-        )
+        for name, array in grid_arrays.items():
 
-    for model_name, model in pole_tide_correction_models.items():
+            write_binary_fortran(
+                TIDE_DATA_PATH / f"{name}.bin",
+                array,
+                dtype=dtype("<f8"),
+            )
 
-        if "IERS" in model_name:
+        for model_name, model in pole_tide_correction_models.items():
 
-            continue
+            if "IERS" in model_name:
 
-        array = asarray(model, dtype=dtype("<f4"))[..., model_mask]
+                continue
 
-        write_binary_fortran(
-            TIDE_DATA_PATH / f"{model_name}.bin",
-            array,
-            dtype=dtype("<f4"),
-        )
+            array = asarray(model, dtype=dtype("<f4"))[..., model_mask]
+
+            write_binary_fortran(
+                TIDE_DATA_PATH / f"{model_name}.bin",
+                array,
+                dtype=dtype("<f4"),
+            )
 
     if to_save:
 
@@ -588,8 +593,9 @@ def save_pole_tide_corrections(
 
 def save_solid_tide_corrections(
     solid_tide_correction_models: dict[str, ndarray],
-    models_path: Path = TIDE_MODELS_PATH,
+    models_path: Path = POLE_MODELS_PATH,
     to_save: bool = False,
+    to_encode: bool = False,
 ) -> None:
     """
     Hard-codes interpolated k20 values and their partials in f_marsol.f90.
@@ -600,15 +606,17 @@ def save_solid_tide_corrections(
     The solid_tide_index axis follows IERS_LONG_PERIOD_ZONAL_TIDES.
     """
 
-    for variable_name, array_to_write in solid_tide_correction_models.items():
+    if to_encode:
 
-        array = asarray(array_to_write, dtype=dtype("<f4"))
+        for variable_name, array_to_write in solid_tide_correction_models.items():
 
-        write_binary_fortran(
-            TIDE_DATA_PATH / f"{variable_name}.bin",
-            array,
-            dtype=dtype("<f4"),
-        )
+            array = asarray(array_to_write, dtype=dtype("<f4"))
+
+            write_binary_fortran(
+                TIDE_DATA_PATH / f"{variable_name}.bin",
+                array,
+                dtype=dtype("<f4"),
+            )
 
     if to_save:
 
