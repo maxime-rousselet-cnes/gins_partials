@@ -8,7 +8,7 @@ arrays.
 
 import argparse
 
-from gins_partials import hard_code_tide_correction_models
+from gins_partials import encode_tide_correction_models
 
 if __name__ == "__main__":
 
@@ -24,7 +24,7 @@ if __name__ == "__main__":
         help="Enable encoding",
     )
     args = parser.parse_args()
-    hard_code_tide_correction_models(
+    encode_tide_correction_models(
         to_encode=args.encode,
         to_save=args.save,
     )

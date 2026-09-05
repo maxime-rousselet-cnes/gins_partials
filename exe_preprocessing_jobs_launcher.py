@@ -7,28 +7,19 @@ from pathlib import Path
 from shlex import quote
 from subprocess import CalledProcessError, run
 
+from alna import DEFAULT_FOR_GINS_OUTPUT_DIRECTORY, SOLID_EARTH_NUMERICAL_MODELS_PATH, WORKDIR
+from base_models import DATA_PATH
 from numpy.random import shuffle
 
-from gins_partials import quote_slurm_arg
-from gins_partials.tide_correction_model import TIDE_MODELS_PATH
-
-# ---------------------------------------------------------------------------
-# Hard-coded job configuration.
-# ---------------------------------------------------------------------------
+from gins_partials import TIDE_MODELS_PATH, quote_slurm_arg
 
 DEFAULT_CLUSTER_PYTHON_MODULE = "python/3.11.10"
-DEFAULT_CLUSTER_VENV = Path("/home/qt/rousselm/repositories/").joinpath("alna_venv")
-JOB_NAME = "generate_tide_model"
-SLURM_FILE = Path("run_tide_correction_model_generation.sbatch")
-WALLTIME = "00:30:00"
-MEM = "16G"
-CPUS_PER_TASK = 1
-ACCOUNT = "grgs"
-MODELS_PATH = (
-    "/home/qt/rousselm/repositories/common_data/tests/solid_earth_numerical_models/for_gins"
-)
+DEFAULT_CLUSTER_VENV = WORKDIR.parent.joinpath("venv")
 TIDE_CORRECTION_MODEL_SCRIPT = Path("tide_correction_model_generation.py").resolve()
 LAUNCHER_PATH = Path(__file__).resolve()
+JOB_NAME = "generate_tide_model"
+SLURM_FILE = Path("run_tide_correction_model_generation.sbatch")
+ACCOUNT = "grgs"
 
 
 def shell_join_multiline(cmd: list[str]) -> str:
@@ -47,13 +38,13 @@ def make_slurm_script(workdir: Path = Path(".")) -> Path:
     slurm_file = SLURM_FILE.resolve()
     slurm_file.parent.mkdir(parents=True, exist_ok=True)
     cluster_python = Path(DEFAULT_CLUSTER_VENV).resolve() / "bin" / "python"
-    logs_dir = workdir.joinpath("logs").resolve()
+    logs_dir = DATA_PATH.joinpath("logs").resolve()
     preamble = f"""#!/bin/bash
 
 #SBATCH --job-name={JOB_NAME}
-#SBATCH --time={WALLTIME}
-#SBATCH --mem={MEM}
-#SBATCH --cpus-per-task={CPUS_PER_TASK}
+#SBATCH --time=00:30:00
+#SBATCH --mem=16G
+#SBATCH --cpus-per-task=1
 #SBATCH --output={logs_dir}/slurm_%A_%a.out
 #SBATCH --error={logs_dir}/slurm_%A_%a.err
 
@@ -84,7 +75,11 @@ source {quote(str(Path(DEFAULT_CLUSTER_VENV) / "bin" / "activate"))}
     task_commands = []
     task_id = 0
 
-    file_paths = list(Path(MODELS_PATH).glob("*"))
+    file_paths = list(
+        Path(SOLID_EARTH_NUMERICAL_MODELS_PATH.joinpath(DEFAULT_FOR_GINS_OUTPUT_DIRECTORY)).glob(
+            "*"
+        )
+    )
     already_done = [file.name[:-5] for file in TIDE_MODELS_PATH.glob("*")]
     shuffle(file_paths)
 
@@ -114,6 +109,7 @@ exit 1
 """
 
     slurm_file.write_text(script, encoding="utf-8")
+
     return slurm_file
 
 
@@ -124,7 +120,17 @@ def submit_slurm(workdir: Path = Path("."), n_jobs_max: int = 500) -> None:
     logs_dir.mkdir(parents=True, exist_ok=True)
     TIDE_MODELS_PATH.mkdir(parents=True, exist_ok=True)
     slurm_file = make_slurm_script(workdir=workdir)
-    n_jobs = len(list(Path(MODELS_PATH).glob("*"))) - 1 - len(list(TIDE_MODELS_PATH.glob("*")))
+    n_jobs = (
+        len(
+            list(
+                Path(
+                    SOLID_EARTH_NUMERICAL_MODELS_PATH.joinpath(DEFAULT_FOR_GINS_OUTPUT_DIRECTORY)
+                ).glob("*")
+            )
+        )
+        - 1
+        - len(list(TIDE_MODELS_PATH.glob("*")))
+    )
     array_spec = f"1-{n_jobs}%{n_jobs_max}"
 
     cmd = [
@@ -148,13 +154,15 @@ def submit_slurm(workdir: Path = Path("."), n_jobs_max: int = 500) -> None:
 
         if exc.stdout:
 
+            stdout: str = exc.stdout
             print("sbatch stdout:")
-            print(exc.stdout.rstrip())
+            print(stdout.rstrip())
 
         if exc.stderr:
 
+            stderr: str = exc.stderr
             print("sbatch stderr:")
-            print(exc.stderr.rstrip())
+            print(stderr.rstrip())
 
         raise
 

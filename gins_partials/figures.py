@@ -10,6 +10,7 @@ from base_models import lagrange_order4, load_base_model
 from matplotlib.axes import Axes
 from matplotlib.pyplot import show, subplots, tight_layout
 from numpy import array, ndarray, zeros
+from numpy.testing import assert_allclose
 
 from .listing_getters import read_for_partials
 from .tide_correction_model import (
@@ -221,7 +222,6 @@ def interpolate_by_axis(
 
 
 def plot_pole_tide_models(
-    # TODO: redo using new save convention.
     path: Path = Path("."),
     file: str = "gins_listing",
     tide_models_path: Path = POLE_MODELS_PATH,
@@ -267,11 +267,11 @@ def plot_pole_tide_models(
     )
     jjul_dates = jjul_dates[mask]
     axes: list[Axes]
-    figure, axes = subplots(2, 1, figsize=(8, 8))
-    axes[0].scatter(gins_model["dates"], gins_model["C"], label="GINS", s=2)
-    axes[1].scatter(gins_model["dates"], gins_model["S"], s=2)
+    figure, axes = subplots(2, 2, figsize=(16, 8), sharex=True)
+    axes[0][0].scatter(gins_model["dates"], gins_model["C"], label="GINS", s=2)
+    axes[1][0].scatter(gins_model["dates"], gins_model["S"], s=2)
 
-    for component, ax in zip("CS", axes):
+    for component, ax_line in zip("CS", axes):
 
         sub_diurnal_correction = gins_model[component] - lagrange_order4(
             x=jjul_dates,
@@ -294,50 +294,60 @@ def plot_pole_tide_models(
         )
         """
 
-        for lam, lqm, ldm, ltm in model_values_to_plot:
+        for (lam, lqm, ldm, ltm), color in zip(
+            model_values_to_plot, ["orange", "green", "red", "purple", "pink"]
+        ):
 
-            ax.scatter(
+            values = lagrange_order4(
+                x=jjul_dates,
+                y=interpolate_by_axis(
+                    lam_values=lam_values,
+                    lqm_values=lqm_values,
+                    ldm_values=ldm_values,
+                    ltm_values=ltm_values,
+                    lam=lam,
+                    lqm=lqm,
+                    ldm=ldm,
+                    ltm=ltm,
+                    jjul_dates=jjul_dates,
+                    pole_tide_correction_model=array(
+                        object=pole_tide_correction_models[
+                            (
+                                component.replace("__", "_")
+                                if component in pole_tide_correction_models
+                                else component + "_"
+                            )
+                        ],
+                        dtype=float,
+                    )[:, :, :, :, mask],
+                ),
+                new_x=gins_model["dates"],
+            )
+            ax_line[0].scatter(
                 gins_model["dates"],
-                lagrange_order4(
-                    x=jjul_dates,
-                    y=interpolate_by_axis(
-                        lam_values=lam_values,
-                        lqm_values=lqm_values,
-                        ldm_values=ldm_values,
-                        ltm_values=ltm_values,
-                        lam=lam,
-                        lqm=lqm,
-                        ldm=ldm,
-                        ltm=ltm,
-                        jjul_dates=jjul_dates,
-                        pole_tide_correction_model=array(
-                            object=pole_tide_correction_models[
-                                (
-                                    component.replace("__", "_")
-                                    if component in pole_tide_correction_models
-                                    else component + "_"
-                                )
-                            ],
-                            dtype=float,
-                        )[:, :, :, :, mask],
-                    ),
-                    new_x=gins_model["dates"],
-                )
-                + sub_diurnal_correction,
+                values + sub_diurnal_correction,
                 label=rf"$\alpha={round(lam, 2)}$  $Q={round(10**lqm)}$  $\Delta={round(10**ldm, 2)}$  $\tau_m={round(10**(ltm))}$s",
                 s=2,
+                color=color,
             )
 
-    axes[0].set_ylabel(ylabel=r"$C_{21}$")
-    axes[1].set_ylabel(ylabel=r"$S_{21}$")
-    axes[1].set_xlabel(xlabel=r"$J_{julian}$")
-    axes[0].legend()
+            ax_line[1].scatter(
+                gins_model["dates"],
+                values + sub_diurnal_correction - gins_model[component] - values[0],
+                s=2,
+                color=color,
+            )
+
+    axes[0][0].set_ylabel(ylabel=r"$C_{21}$")
+    axes[1][0].set_ylabel(ylabel=r"$S_{21}$")
+    axes[1][0].set_xlabel(xlabel=r"$J_{julian}$")
+    axes[0][0].legend()
     save_figure(figure=figure, figure_title="pole_tide_models")
 
 
 REFERENCE_PARAMETER_VALUES = {"lam": 0.1, "lqm": 3.5, "ldm": -0.9, "ltm": 3.5}
 
-JUMPER = 10
+JUMPER = 2
 JJUL_MAX_FIGURE = 24970.5
 
 
@@ -352,7 +362,7 @@ def compare_acceleration_partials_to_finite_differences(
     epochs, acceleration, lam_formal, lqm_formal, ldm_formal, ltm_formal = read_for_partials(
         filename=f"rheology_{satellite}_checkup.yml"
     )
-    _, acceleration_lam_plus_d_lam, _, _, _, _ = read_for_partials(
+    epochs_lam, acceleration_lam_plus_d_lam, _, _, _, _ = read_for_partials(
         filename=f"rheology_{satellite}_checkup_lam_plus_" + str(d_parameter),
     )
     _, acceleration_lqm_plus_d_lqm, _, _, _, _ = read_for_partials(
@@ -364,6 +374,7 @@ def compare_acceleration_partials_to_finite_differences(
     _, acceleration_ltm_plus_d_ltm, _, _, _, _ = read_for_partials(
         filename=f"rheology_{satellite}_checkup_ltm_plus_" + str(d_parameter),
     )
+    assert_allclose(epochs_lam, epochs, rtol=0.0, atol=1e-12)
     acceleration = acceleration[epochs <= JJUL_MAX_FIGURE]
     lam_formal = lam_formal[epochs <= JJUL_MAX_FIGURE]
     lqm_formal = lqm_formal[epochs <= JJUL_MAX_FIGURE]
@@ -374,10 +385,10 @@ def compare_acceleration_partials_to_finite_differences(
     acceleration_ldm_plus_d_ldm = acceleration_ldm_plus_d_ldm[epochs <= JJUL_MAX_FIGURE]
     acceleration_ltm_plus_d_ltm = acceleration_ltm_plus_d_ltm[epochs <= JJUL_MAX_FIGURE]
     epochs = epochs[epochs <= JJUL_MAX_FIGURE]
-    lam_finite_difference = 1e-2 * (acceleration_lam_plus_d_lam - acceleration) / d_parameter
-    lqm_finite_difference = 1e-2 * (acceleration_lqm_plus_d_lqm - acceleration) / d_parameter
-    ldm_finite_difference = 1e-2 * (acceleration_ldm_plus_d_ldm - acceleration) / d_parameter
-    ltm_finite_difference = 1e-2 * (acceleration_ltm_plus_d_ltm - acceleration) / d_parameter
+    lam_finite_difference = (acceleration_lam_plus_d_lam - acceleration) / d_parameter
+    lqm_finite_difference = (acceleration_lqm_plus_d_lqm - acceleration) / d_parameter
+    ldm_finite_difference = (acceleration_ldm_plus_d_ldm - acceleration) / d_parameter
+    ltm_finite_difference = (acceleration_ltm_plus_d_ltm - acceleration) / d_parameter
 
     axes: Iterable[Iterable[Axes]]
     figure, axes = subplots(3, 4, figsize=(18, 12), sharex=True)

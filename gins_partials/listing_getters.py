@@ -11,8 +11,7 @@ GINS_LISTING_PATH = DATA_PATH.joinpath("listing")
 
 
 def read_for_partials(
-    filename: str,
-    path: Path = GINS_LISTING_PATH,
+    filename: str, path: Path = GINS_LISTING_PATH, iteration: int = 0
 ) -> tuple[ndarray, ndarray, ndarray, ndarray, ndarray, ndarray]:
     """
     Gets tabs of epochs, accelerations, and parameter partials.
@@ -20,7 +19,6 @@ def read_for_partials(
     """
 
     epochs = []
-
     outputs = {
         "acc": [],
         "local_lam": [],
@@ -36,9 +34,20 @@ def read_for_partials(
 
         for line in f:
 
-            if "ER:0" in line:
+            if f"ER:{iteration }" in line:
 
                 break
+
+            if f"ER:{iteration -1}" in line:
+
+                epochs = []
+                outputs = {
+                    "acc": [],
+                    "local_lam": [],
+                    "local_lqm": [],
+                    "local_ldm": [],
+                    "local_ltm": [],
+                }
 
             fields = line.split()
 
@@ -55,10 +64,6 @@ def read_for_partials(
                 current_values = []
 
             elif key in outputs:
-
-                if key == "local_ldm" and len(outputs["local_ldm"]) == len(outputs["local_lqm"]):
-
-                    key = "local_lqm"
 
                 current_key = key
                 current_values = [float(value) for value in fields[1:]]
