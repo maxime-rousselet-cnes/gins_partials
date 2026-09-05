@@ -428,7 +428,7 @@ def encode_tide_correction_models(
         name="PREM",
         path=ELASTIC_INTEGRATION_PATH,
     ).love_numbers["real"][2][0][BoundaryCondition.POTENTIAL.value][Direction.POTENTIAL.value]
-    tabs, all_correction_models = load_tide_correction_models(path=path)
+    tabs, all_correction_models = load_tide_correction_models(path=TIDE_MODELS_PATH)
     pole_motion = prepare_pole_motion_signal(
         steady_state_signal_parameters=steady_state_signal_parameters,
         models_path=models_path,
