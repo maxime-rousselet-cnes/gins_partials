@@ -55,9 +55,8 @@ from .utils import (
     get_m1_m2_time_series,
 )
 
-# TIDE_MODELS_PATH = Path("/work/GRGS/users/rousselm/public/tide_models").resolve()
 TIDE_MODELS_PATH = DATA_PATH.joinpath("tide_models").resolve()
-TIDE_DATA_PATH = DATA_PATH.joinpath("tide_binary_files").resolve()
+TIDE_BINARY_FILES_PATH = DATA_PATH.joinpath("tide_binary_files").resolve()
 LONG_TERM_HYPOTHESIS_PERIOD = 10000  # (yr).
 POLE_MODELS_PATH = DATA_PATH.joinpath("pole").resolve()
 DEFAULT_SIGNAL_PARAMETERS = SteadyStateSignalParameters()
@@ -414,7 +413,7 @@ def load_tide_correction_models(
 
 
 def encode_tide_correction_models(
-    path: Path = TIDE_MODELS_PATH,
+    path: Path = TIDE_BINARY_FILES_PATH,
     steady_state_signal_parameters: SteadyStateSignalParameters = DEFAULT_SIGNAL_PARAMETERS,
     models_path: Path = POLE_MODELS_PATH,
     pole_motion_file: str = "C01_pole_motion_time_series.txt",
@@ -483,7 +482,7 @@ def encode_tide_correction_models(
                 s_21_reference - all_correction_models[correction_type][..., :1]
             )
 
-    TIDE_DATA_PATH.mkdir(parents=True, exist_ok=True)
+    path.mkdir(parents=True, exist_ok=True)
     save_tabs(
         dates=pole_motion.dates,
         tabs=tabs,
@@ -533,7 +532,7 @@ def write_binary_fortran(
 def save_tabs(
     dates: ndarray,
     tabs: dict[str, ndarray],
-    path: Path = TIDE_MODELS_PATH,
+    path: Path = TIDE_BINARY_FILES_PATH,
     models_path: Path = POLE_MODELS_PATH,
     to_save: bool = False,
 ) -> None:
@@ -587,7 +586,7 @@ def save_tabs(
 def save_pole_tide_corrections(
     dates: ndarray,
     pole_tide_correction_models: dict[str, ndarray],
-    path: Path = TIDE_MODELS_PATH,
+    path: Path = TIDE_BINARY_FILES_PATH,
     models_path: Path = POLE_MODELS_PATH,
     to_save: bool = False,
 ) -> None:
@@ -633,7 +632,7 @@ def save_pole_tide_corrections(
 
 def save_solid_tide_corrections(
     solid_tide_correction_models: dict[str, ndarray],
-    path: Path = TIDE_MODELS_PATH,
+    path: Path = TIDE_BINARY_FILES_PATH,
     models_path: Path = POLE_MODELS_PATH,
     to_save: bool = False,
 ) -> None:
