@@ -1,8 +1,5 @@
 """
-Defines and hard-codes the solid pole tide correction driven by k2 only in GINS routine
-f_marpolsol.f90.
-The generated Fortran tables are gridded in the runtime interpolation variables
-(alpha, log10(Delta), log10(tau_m), date).
+TODO: describe.
 """
 
 from itertools import product
