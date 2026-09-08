@@ -13,13 +13,14 @@ from time import time
 from typing import Optional
 
 import matplotlib.dates as mdates
+from base_models import DATA_PATH
 from matplotlib.axes import Axes
 from matplotlib.gridspec import GridSpec
 from matplotlib.pyplot import close, figure, setp, subplots, tight_layout
 from numpy import arange, array, cos, ndarray, ones, pi, quantile, sin, zeros, zeros_like
 from pandas import date_range, to_datetime
 
-SIGMA_VALUES = [-13]
+SIGMA_VALUES = [-12, -13, -14]
 N_SIGMAS = 3
 CHECKPOINT_TUPLES = []
 FLOAT_REGEX = compile(r"[+-]?\d+\.\d+E[+-]\d+|[+-]?\.\d+E[+-]\d+")
@@ -34,6 +35,7 @@ class ParameterType(Enum):
     S = auto()
     C = auto()
     LAM = auto()
+    LQM = auto()
     LDM = auto()
     LTM = auto()
 
@@ -66,6 +68,7 @@ MODE_MAP = {
     "Q": ParameterMode.ADD_SIN,
 }
 LAM_KEY: Parameter = (ParameterType.LAM, None, None, None, None)
+LQM_KEY: Parameter = (ParameterType.LQM, None, None, None, None)
 LDM_KEY: Parameter = (ParameterType.LDM, None, None, None, None)
 LTM_KEY: Parameter = (ParameterType.LTM, None, None, None, None)
 MODE_LETTERS = {
@@ -199,7 +202,11 @@ def parse_parameter_name(
             MODE_MAP[suffix],
         )
 
-    return LAM_KEY if name == "LAM" else (LDM_KEY if name == "LDM" else LTM_KEY)
+    return (
+        LAM_KEY
+        if name == "LAM"
+        else (LQM_KEY if name == "LQM" else (LDM_KEY if name == "LDM" else LTM_KEY))
+    )
 
 
 def ingest_dynamo_d_solution(
@@ -499,11 +506,12 @@ def produce_uncrossed_figures(
 
 
 def plot_solutions(
-    alpha: bool,
-    delta: bool,
-    tau_m: bool,
+    lam: bool,
+    lqm: bool,
+    ldm: bool,
+    ltm: bool,
     root: Path = Path("solution"),
-    output_root: Path = Path("solution_figures"),
+    output_root: Path = DATA_PATH.joinpath("solution_figures"),
 ) -> None:
     """
     Iterates on all solutions of the root directory and produces uncrossed solution figures.
@@ -511,14 +519,11 @@ def plot_solutions(
 
     t_0 = time()
 
-    alpha_subdirectory = root / ("fix_alpha_" + str(alpha).lower())
-    delta_subdirectory = alpha_subdirectory / ("fix_log10_delta_" + str(delta).lower())
-    tau_m_subdirectory = delta_subdirectory / ("fix_log10_tau_m_" + str(tau_m).lower())
-    checkpoint_tuple = (
-        alpha,
-        delta,
-        tau_m,
-    )
+    lam_subdirectory = root / ("fix_lam_" + str(lam).lower())
+    lqm_subdirectory = lam_subdirectory / ("fix_lqm_" + str(lqm).lower())
+    ldm_subdirectory = lqm_subdirectory / ("fix_ldm_" + str(ldm).lower())
+    ltm_subdirectory = ldm_subdirectory / ("fix_ltm_" + str(ltm).lower())
+    checkpoint_tuple = (lam, lqm, ldm, ltm)
     reference_dates, reference_values, reference_uncertainties = gravity_timeseries()
 
     if checkpoint_tuple not in CHECKPOINT_TUPLES:
@@ -535,7 +540,7 @@ def plot_solutions(
             ],
         ] = {}
 
-        for g_subdirectory in tau_m_subdirectory.iterdir():
+        for g_subdirectory in ltm_subdirectory.iterdir():
 
             fix_g = g_subdirectory.name.split("_")[-1] == "true"
 
@@ -576,11 +581,11 @@ def plot_solutions(
         if gathered:
 
             file_path_to_save = create_parallel_path(
-                root=root, file=tau_m_subdirectory, output_root=output_root
+                root=root, file=ltm_subdirectory, output_root=output_root
             )
             plot_comparative(gathered=gathered, output_path=file_path_to_save)
 
-    print(alpha, delta, tau_m, time() - t_0)
+    print(lam, lqm, ldm, ltm, time() - t_0)
 
 
 def format_parameter(parameter: Parameter) -> Optional[str]:
@@ -595,7 +600,13 @@ def format_parameter(parameter: Parameter) -> Optional[str]:
         return (
             r"$\alpha$"
             if p_type == ParameterType.LAM
-            else (r"$\log_{10} \Delta$" if p_type == ParameterType.LDM else r"$\log_{10} \tau_m$")
+            else (
+                r"$\log_{10} Q_\mu"
+                if p_type == ParameterType.LQM
+                else (
+                    r"$\log_{10} \Delta$" if p_type == ParameterType.LDM else r"$\log_{10} \tau_m$"
+                )
+            )
         )
 
     type_letter = "$C_{" if p_type == ParameterType.C else "$S_{"
@@ -648,7 +659,12 @@ def order_parameters(parameters: list[Parameter]) -> list[Parameter]:
     Orders parameters: Rheological parameters first, then per spherical harmonic, then per mode.
     """
 
-    priority = {ParameterType.LAM: 0, ParameterType.LDM: 1, ParameterType.LTM: 2}
+    priority = {
+        ParameterType.LAM: 0,
+        ParameterType.LQM: 1,
+        ParameterType.LDM: 1,
+        ParameterType.LTM: 2,
+    }
 
     return sorted(
         parameters,
@@ -1092,9 +1108,10 @@ def parse_job_args() -> Namespace:
 
     parser = ArgumentParser()
     parser.add_argument("--root", type=str, default="solution")
-    parser.add_argument("--alpha", action="store_true", default=False)
-    parser.add_argument("--delta", action="store_true", default=False)
-    parser.add_argument("--tau_m", action="store_true", default=False)
+    parser.add_argument("--lam", action="store_true", default=False)
+    parser.add_argument("--lqm", action="store_true", default=False)
+    parser.add_argument("--ldm", action="store_true", default=False)
+    parser.add_argument("--ltm", action="store_true", default=False)
 
     return parser.parse_args()
 
@@ -1102,4 +1119,4 @@ def parse_job_args() -> Namespace:
 if __name__ == "__main__":
 
     args = parse_job_args()
-    plot_solutions(alpha=args.alpha, delta=args.delta, tau_m=args.tau_m, root=Path(args.root))
+    plot_solutions(lam=args.lam, lqm=args.lqm, ldm=args.ldm, ltm=args.ltm, root=Path(args.root))

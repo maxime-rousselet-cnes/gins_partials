@@ -33,6 +33,12 @@ DEFAULT_MODEL_VALUES_TO_PLOT = [
 ]
 
 
+REFERENCE_PARAMETER_VALUES = {"lam": 0.1, "lqm": 3.5, "ldm": -0.9, "ltm": 3.5}
+
+JUMPER = 2
+JJUL_MAX_FIGURE = 24970.5
+
+
 def get_gins_pole_motion_time_series(
     path: Path = Path("."),
     file: str = "gins_listing",
@@ -266,7 +272,7 @@ def plot_pole_tide_models(
         jjul_dates >= GINS_ARC_MONITORING_START_JJUL - GINS_ARC_MONITORING_JJUL_MARGIN
     )
     jjul_dates = jjul_dates[mask]
-    axes: list[Axes]
+    axes: list[list[Axes]]
     figure, axes = subplots(2, 2, figsize=(16, 8), sharex=True)
     axes[0][0].scatter(gins_model["dates"], gins_model["C"], label="GINS", s=2)
     axes[1][0].scatter(gins_model["dates"], gins_model["S"], s=2)
@@ -330,25 +336,22 @@ def plot_pole_tide_models(
                 s=2,
                 color=color,
             )
-
+            error = values + sub_diurnal_correction - gins_model[component]
             ax_line[1].scatter(
                 gins_model["dates"],
-                values + sub_diurnal_correction - gins_model[component] - values[0],
+                error - error[0],
                 s=2,
                 color=color,
             )
 
+    axes[0][0].set_title("Absolute correction values")
+    axes[0][1].set_title("Differences to standard")
     axes[0][0].set_ylabel(ylabel=r"$C_{21}$")
     axes[1][0].set_ylabel(ylabel=r"$S_{21}$")
     axes[1][0].set_xlabel(xlabel=r"$J_{julian}$")
+    axes[1][1].set_xlabel(xlabel=r"$J_{julian}$")
     axes[0][0].legend()
     save_figure(figure=figure, figure_title="pole_tide_models")
-
-
-REFERENCE_PARAMETER_VALUES = {"lam": 0.1, "lqm": 3.5, "ldm": -0.9, "ltm": 3.5}
-
-JUMPER = 2
-JJUL_MAX_FIGURE = 24970.5
 
 
 def compare_acceleration_partials_to_finite_differences(
@@ -356,39 +359,38 @@ def compare_acceleration_partials_to_finite_differences(
     satellite: str = "starlette",
 ) -> None:
     """
-    Partial derivatives validation figure for a single arc at a single parameter value.
+    Validate formal partials against symmetric differences with step d_parameter.
     """
 
-    epochs, acceleration, lam_formal, lqm_formal, ldm_formal, ltm_formal = read_for_partials(
+    epochs, _, lam_formal, lqm_formal, ldm_formal, ltm_formal = read_for_partials(
         filename=f"rheology_{satellite}_checkup.yml"
     )
-    epochs_lam, acceleration_lam_plus_d_lam, _, _, _, _ = read_for_partials(
-        filename=f"rheology_{satellite}_checkup_lam_plus_" + str(d_parameter),
-    )
-    _, acceleration_lqm_plus_d_lqm, _, _, _, _ = read_for_partials(
-        filename=f"rheology_{satellite}_checkup_lqm_plus_" + str(d_parameter),
-    )
-    _, acceleration_ldm_plus_d_ldm, _, _, _, _ = read_for_partials(
-        filename=f"rheology_{satellite}_checkup_ldm_plus_" + str(d_parameter),
-    )
-    _, acceleration_ltm_plus_d_ltm, _, _, _, _ = read_for_partials(
-        filename=f"rheology_{satellite}_checkup_ltm_plus_" + str(d_parameter),
-    )
-    assert_allclose(epochs_lam, epochs, rtol=0.0, atol=1e-12)
-    acceleration = acceleration[epochs <= JJUL_MAX_FIGURE]
-    lam_formal = lam_formal[epochs <= JJUL_MAX_FIGURE]
-    lqm_formal = lqm_formal[epochs <= JJUL_MAX_FIGURE]
-    ldm_formal = ldm_formal[epochs <= JJUL_MAX_FIGURE]
-    ltm_formal = ltm_formal[epochs <= JJUL_MAX_FIGURE]
-    acceleration_lam_plus_d_lam = acceleration_lam_plus_d_lam[epochs <= JJUL_MAX_FIGURE]
-    acceleration_lqm_plus_d_lqm = acceleration_lqm_plus_d_lqm[epochs <= JJUL_MAX_FIGURE]
-    acceleration_ldm_plus_d_ldm = acceleration_ldm_plus_d_ldm[epochs <= JJUL_MAX_FIGURE]
-    acceleration_ltm_plus_d_ltm = acceleration_ltm_plus_d_ltm[epochs <= JJUL_MAX_FIGURE]
-    epochs = epochs[epochs <= JJUL_MAX_FIGURE]
-    lam_finite_difference = (acceleration_lam_plus_d_lam - acceleration) / d_parameter
-    lqm_finite_difference = (acceleration_lqm_plus_d_lqm - acceleration) / d_parameter
-    ldm_finite_difference = (acceleration_ldm_plus_d_ldm - acceleration) / d_parameter
-    ltm_finite_difference = (acceleration_ltm_plus_d_ltm - acceleration) / d_parameter
+    mask = epochs <= JJUL_MAX_FIGURE
+    finite_differences = {}
+
+    for parameter in ("lam", "lqm", "ldm", "ltm"):
+
+        epochs_plus, acceleration_plus, _, _, _, _ = read_for_partials(
+            filename=f"rheology_{satellite}_checkup_{parameter}_plus_" + str(d_parameter),
+        )
+        epochs_minus, acceleration_minus, _, _, _, _ = read_for_partials(
+            filename=f"rheology_{satellite}_checkup_{parameter}_minus_" + str(d_parameter),
+        )
+        assert_allclose(epochs_plus, epochs, rtol=0.0, atol=1e-12)
+        assert_allclose(epochs_minus, epochs, rtol=0.0, atol=1e-12)
+        finite_differences[parameter] = (acceleration_plus[mask] - acceleration_minus[mask]) / (
+            2 * d_parameter
+        )
+
+    lam_formal = lam_formal[mask]
+    lqm_formal = lqm_formal[mask]
+    ldm_formal = ldm_formal[mask]
+    ltm_formal = ltm_formal[mask]
+    epochs = epochs[mask]
+    lam_finite_difference = finite_differences["lam"]
+    lqm_finite_difference = finite_differences["lqm"]
+    ldm_finite_difference = finite_differences["ldm"]
+    ltm_finite_difference = finite_differences["ltm"]
 
     axes: Iterable[Iterable[Axes]]
     figure, axes = subplots(3, 4, figsize=(18, 12), sharex=True)

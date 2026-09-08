@@ -152,7 +152,7 @@ def submit_slurm(workdir: Path = Path(".")) -> None:
 
     slurm_file = make_slurm_script(workdir=workdir)
 
-    array_spec = f"1-{N_TASKS}"
+    array_spec = f"1-{N_TASKS}%100"
 
     cmd = [
         "sbatch",
