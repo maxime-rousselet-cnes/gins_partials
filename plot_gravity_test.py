@@ -13,7 +13,15 @@ from time import time
 from typing import Optional
 
 import matplotlib.dates as mdates
-from base_models import DATA_PATH
+
+DATA_PATH_TXT_PATH = Path("..")
+
+with open(DATA_PATH_TXT_PATH.joinpath("data_path.txt"), "r", encoding="utf-8") as file:
+
+    ROOT_PATH = Path("".join((line.strip() for line in file.readlines())))
+
+DATA_PATH = ROOT_PATH.joinpath("common_data")
+
 from matplotlib.axes import Axes
 from matplotlib.gridspec import GridSpec
 from matplotlib.pyplot import close, figure, subplots
