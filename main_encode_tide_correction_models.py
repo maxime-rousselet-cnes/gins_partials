@@ -8,7 +8,7 @@ arrays.
 
 import argparse
 
-from gins_partials import encode_tide_correction_models
+from alna.tide_correction_model import encode_tide_correction_models
 
 if __name__ == "__main__":
 

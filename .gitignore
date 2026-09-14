@@ -2,7 +2,6 @@ gins_listing
 solution*
 *heatmaps.svg*
 constraints_G_*
-rheology_*
 logs
 *.sbatch
 RL05.shc
