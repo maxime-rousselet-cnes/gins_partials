@@ -6,7 +6,7 @@ logs
 *.sbatch
 RL05.shc
 *field*
-periodogram.pdf
+*.pdf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
