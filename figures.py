@@ -24,15 +24,18 @@ GINS_ARC_MONITORING_START_JJUL = 25080
 GINS_ARC_MONITORING_END_JJUL = 25110
 GINS_ARC_MONITORING_JJUL_MARGIN = 30
 DEFAULT_MODEL_VALUES_TO_PLOT = [
-    (0.17, 0.06, 1.17, 0.25),
-    (0.18, 0.06, 1.17, 0.25),
-    (0.17, 0.1, 1.17, 0.25),
-    (0.17, 0.06, log10(3), 0.25),
-    (0.17, 0.06, 1.17, 0),
+    (log10(0.17), -1.17, 1.17, 0.25),
+    (log10(0.16), -1.17, 1.17, 0.25),
+    (log10(0.17), -1.27, 1.17, 0.25),
+    (log10(0.17), -1.17, log10(3), 0.25),
+    (log10(0.17), -1.17, 1.17, 0.5),
 ]
 
 
-REFERENCE_PARAMETER_VALUES = {"lam": 0.17, "lqm": 0.06, "ldm": 1.17, "ltm": 0.25}
+REFERENCE_PARAMETER_VALUES = {
+    parameter: value
+    for parameter, value in zip(DEFAULT_MODEL_VALUES_TO_PLOT[0], ["lam", "lqm", "ldm", "ltm"])
+}
 
 JUMPER = 2
 JJUL_MAX_FIGURE = 24970.5
@@ -331,7 +334,7 @@ def plot_pole_tide_models(
             ax_line[0].scatter(
                 gins_model["dates"],
                 values + sub_diurnal_correction,
-                label=rf"$\alpha={round(lam, 2)}$  $Q={round(lqm, 2)}$  $\Delta={round(10**ldm, 2)}$  $\tau_m={round(10**(ltm), 2)}$s",
+                label=rf"$\alpha_{{Asth.}}={round(10**lam, 2)}$  $\alpha_{{non-Asth.}}={round(10**lqm, 2)}$  $\Delta_{{Asth.}}={round(10**ldm, 2)}$  $\Delta_{{non-Asth.}}={round(10**(ltm), 2)}$s",
                 s=2,
                 color=color,
             )
@@ -354,7 +357,7 @@ def plot_pole_tide_models(
 
 
 def compare_acceleration_partials_to_finite_differences(
-    d_parameter: float = 0.001,
+    d_parameter: float = 0.01,
     satellite: str = "ajisai",
 ) -> None:
     """
@@ -401,8 +404,8 @@ def compare_acceleration_partials_to_finite_differences(
         for ax, parameter in zip(
             ax_line,
             [
-                r"\alpha_{Asth.}",
-                r"\alpha_{non-Asth.})",
+                r"\log_{10}(\alpha_{Asth.})",
+                r"\log_{10}(\alpha_{non-Asth.})",
                 r"\log_{10}(\Delta_{Asth.})",
                 r"\log_{10}(\Delta_{non-Asth.})",
             ],
