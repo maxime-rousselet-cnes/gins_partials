@@ -6,34 +6,33 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from alna import save_figure
-from base_models import lagrange_order4, load_base_model
-from matplotlib.axes import Axes
-from matplotlib.pyplot import show, subplots, tight_layout
-from numpy import array, ndarray, zeros
-from numpy.testing import assert_allclose
-
-from .listing_getters import read_for_partials
-from .tide_correction_model import (
+from alna.tide_correction_model import (
     POLE_MODELS_PATH,
     POLE_TIDE_CORRECTION_MODELS_DEFAULT_FILE_NAME,
     dates_to_jjul_dates,
+    get_m1_m2_time_series,
+    read_for_partials,
 )
-from .utils import get_m1_m2_time_series
+from base_models import lagrange_order4, load_base_model
+from matplotlib.axes import Axes
+from matplotlib.pyplot import show, subplots, tight_layout
+from numpy import array, log10, ndarray, zeros
+from numpy.testing import assert_allclose
 
 GINS_ARC_MONITORING_SHORTCUT_PLOTTER = 100
 GINS_ARC_MONITORING_START_JJUL = 25080
 GINS_ARC_MONITORING_END_JJUL = 25110
 GINS_ARC_MONITORING_JJUL_MARGIN = 30
 DEFAULT_MODEL_VALUES_TO_PLOT = [
-    (0.25, 3.5, -0.9, 3.51),
-    (0.2, 3.5, -0.9, 3.51),
-    (0.25, 4, -0.9, 3.51),
-    (0.25, 3.5, -0.5, 3.51),
-    (0.25, 3.5, -0.9, 4),
+    (0.17, 0.06, 1.17, 0.25),
+    (0.18, 0.06, 1.17, 0.25),
+    (0.17, 0.1, 1.17, 0.25),
+    (0.17, 0.06, log10(3), 0.25),
+    (0.17, 0.06, 1.17, 0),
 ]
 
 
-REFERENCE_PARAMETER_VALUES = {"lam": 0.1, "lqm": 3.5, "ldm": -0.9, "ltm": 3.5}
+REFERENCE_PARAMETER_VALUES = {"lam": 0.17, "lqm": 0.06, "ldm": 1.17, "ltm": 0.25}
 
 JUMPER = 2
 JJUL_MAX_FIGURE = 24970.5
@@ -332,7 +331,7 @@ def plot_pole_tide_models(
             ax_line[0].scatter(
                 gins_model["dates"],
                 values + sub_diurnal_correction,
-                label=rf"$\alpha={round(lam, 2)}$  $Q={round(10**lqm)}$  $\Delta={round(10**ldm, 2)}$  $\tau_m={round(10**(ltm))}$s",
+                label=rf"$\alpha={round(lam, 2)}$  $Q={round(lqm, 2)}$  $\Delta={round(10**ldm, 2)}$  $\tau_m={round(10**(ltm), 2)}$s",
                 s=2,
                 color=color,
             )
@@ -355,8 +354,8 @@ def plot_pole_tide_models(
 
 
 def compare_acceleration_partials_to_finite_differences(
-    d_parameter: float = 0.01,
-    satellite: str = "starlette",
+    d_parameter: float = 0.001,
+    satellite: str = "ajisai",
 ) -> None:
     """
     Validate formal partials against symmetric differences with step d_parameter.
@@ -400,10 +399,16 @@ def compare_acceleration_partials_to_finite_differences(
         ax: Axes
 
         for ax, parameter in zip(
-            ax_line, [r"\alpha", r"\log_{10}(Q_\mu)", r"\log_{10}(\Delta)", r"\log_{10}(\tau_m)"]
+            ax_line,
+            [
+                r"\alpha_{Asth.}",
+                r"\alpha_{non-Asth.})",
+                r"\log_{10}(\Delta_{Asth.})",
+                r"\log_{10}(\Delta_{non-Asth.})",
+            ],
         ):
 
-            if "alpha" in parameter:
+            if "alpha_{A" in parameter:
 
                 ax.scatter(
                     epochs[::JUMPER],
@@ -420,7 +425,7 @@ def compare_acceleration_partials_to_finite_differences(
                     label="finite differences" if i == 0 else None,
                 )
 
-            elif "Q" in parameter:
+            elif "alpha_{n" in parameter:
 
                 ax.scatter(
                     epochs[::JUMPER],
@@ -436,7 +441,8 @@ def compare_acceleration_partials_to_finite_differences(
                     marker="o",
                     label="finite differences" if i == 0 else None,
                 )
-            elif "elta" in parameter:
+
+            elif "Delta_{A" in parameter:
 
                 ax.scatter(
                     epochs[::JUMPER],
@@ -482,9 +488,8 @@ def compare_acceleration_partials_to_finite_differences(
 
                 ax.set_xlabel("JJul")
 
-    figure.suptitle("Finite difference comparison to formal partials " + str(satellite))
     ax: Axes = axes[0][0]
     ax.set_xlim(24970, JJUL_MAX_FIGURE)
     tight_layout()
-    save_figure(figure=figure, figure_title="Acceleration_partials")
+    save_figure(figure=figure, figure_title="acceleration_partials_" + satellite)
     show()

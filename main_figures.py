@@ -2,7 +2,7 @@
 Validation figures.
 """
 
-from gins_partials import (
+from figures import (
     compare_acceleration_partials_to_finite_differences,
     plot_pole_motion,
     plot_pole_tide_models,
