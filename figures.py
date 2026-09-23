@@ -357,7 +357,7 @@ def plot_pole_tide_models(
 
 
 def compare_acceleration_partials_to_finite_differences(
-    d_parameter: float = 0.01,
+    d_parameter: float = 0.1,
     satellite: str = "ajisai",
 ) -> None:
     """
